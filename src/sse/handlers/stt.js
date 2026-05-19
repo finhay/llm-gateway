@@ -1,6 +1,7 @@
 import {
   authenticateApiKey, API_KEY_SCOPES,
   getProviderCredentials, markAccountUnavailable,
+  isProviderAllowed,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -39,6 +40,12 @@ export async function handleStt(request) {
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+
+  if (!isProviderAllowed(auth.keyRecord, provider)) {
+    log.warn("AUTH", `API key not allowed to use provider: ${provider}`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `API key not allowed to use provider: ${provider}`);
+  }
+
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   // noAuth providers

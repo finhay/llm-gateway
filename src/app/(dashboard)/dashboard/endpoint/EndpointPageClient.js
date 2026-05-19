@@ -114,6 +114,8 @@ export default function APIPageClient({ machineId }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyScopePresets, setNewKeyScopePresets] = useState(DEFAULT_NEW_KEY_PRESETS);
+  const [newKeyAllowedProviders, setNewKeyAllowedProviders] = useState([]);
+  const [availableProviders, setAvailableProviders] = useState([]);
   const [newKeyExpiryPreset, setNewKeyExpiryPreset] = useState("never");
   const [newKeyExpiresAtCustom, setNewKeyExpiresAtCustom] = useState("");
   const [newKeyRateLimitRpm, setNewKeyRateLimitRpm] = useState("");
@@ -375,6 +377,24 @@ export default function APIPageClient({ machineId }) {
       console.log("Error fetching data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAvailableProviders = async () => {
+    try {
+      const res = await fetch("/api/providers");
+      const data = await res.json();
+      if (!res.ok) return;
+      const seen = new Map();
+      for (const conn of data.connections || []) {
+        if (!conn.provider) continue;
+        if (!seen.has(conn.provider)) {
+          seen.set(conn.provider, { id: conn.provider, name: conn.name || conn.provider });
+        }
+      }
+      setAvailableProviders(Array.from(seen.values()).sort((a, b) => a.id.localeCompare(b.id)));
+    } catch (error) {
+      console.log("Error fetching providers:", error);
     }
   };
 
@@ -720,6 +740,7 @@ export default function APIPageClient({ machineId }) {
   const resetNewKeyForm = () => {
     setNewKeyName("");
     setNewKeyScopePresets(DEFAULT_NEW_KEY_PRESETS);
+    setNewKeyAllowedProviders([]);
     setNewKeyExpiryPreset("never");
     setNewKeyExpiresAtCustom("");
     setNewKeyRateLimitRpm("");
@@ -749,6 +770,7 @@ export default function APIPageClient({ machineId }) {
     return {
       name: newKeyName.trim(),
       scopes: expandScopePresets(newKeyScopePresets),
+      allowedProviders: newKeyAllowedProviders.length ? newKeyAllowedProviders : undefined,
       expiresAt: resolveExpiresAt(),
       rateLimitRpm: newKeyRateLimitRpm ? Number(newKeyRateLimitRpm) : undefined,
       rateLimitRpd: newKeyRateLimitRpd ? Number(newKeyRateLimitRpd) : undefined,
@@ -756,6 +778,14 @@ export default function APIPageClient({ machineId }) {
       budgetPeriod: newKeyBudgetPeriod || undefined,
       metadata: Object.keys(metadata).length ? metadata : undefined,
     };
+  };
+
+  const toggleNewKeyAllowedProvider = (providerId) => {
+    setNewKeyAllowedProviders((prev) =>
+      prev.includes(providerId)
+        ? prev.filter((id) => id !== providerId)
+        : [...prev, providerId]
+    );
   };
 
   const handleCreateKey = async () => {
@@ -804,6 +834,11 @@ export default function APIPageClient({ machineId }) {
   const closeAddKeyModal = () => {
     setShowAddModal(false);
     resetNewKeyForm();
+  };
+
+  const openAddKeyModal = () => {
+    setShowAddModal(true);
+    fetchAvailableProviders();
   };
 
   const handleDeleteKey = async (id) => {
@@ -1188,7 +1223,7 @@ export default function APIPageClient({ machineId }) {
             <span className="material-symbols-outlined text-primary">vpn_key</span>
             API Keys
           </h2>
-          <Button icon="add" onClick={() => setShowAddModal(true)}>
+          <Button icon="add" onClick={openAddKeyModal}>
             Create Key
           </Button>
         </div>
@@ -1255,6 +1290,13 @@ export default function APIPageClient({ machineId }) {
                     </div>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <KeyChip icon="vpn_key">{summarizeScopes(key.scopes)}</KeyChip>
+                      {key.allowedProviders?.length > 0 && (
+                        <KeyChip icon="hub">
+                          {key.allowedProviders.length === 1
+                            ? key.allowedProviders[0]
+                            : `${key.allowedProviders.length} providers`}
+                        </KeyChip>
+                      )}
                       {(key.rateLimitRpm || key.rateLimitRpd) && (
                         <KeyChip icon="speed">
                           {[
@@ -1356,6 +1398,43 @@ export default function APIPageClient({ machineId }) {
                 );
               })}
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Allowed Providers</p>
+              <p className="text-xs text-text-muted">Leave empty for all</p>
+            </div>
+            {availableProviders.length === 0 ? (
+              <p className="text-sm text-text-muted">No providers connected yet.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {availableProviders.map((p) => {
+                  const checked = newKeyAllowedProviders.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-2 rounded-lg border p-2 text-sm cursor-pointer ${
+                        checked ? "border-primary bg-primary/5" : "border-border"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleNewKeyAllowedProvider(p.id)}
+                        className="accent-primary"
+                      />
+                      <span className="truncate">
+                        <span className="font-medium">{p.name}</span>
+                        {p.name !== p.id && (
+                          <span className="ml-1 font-mono text-xs text-text-muted">{p.id}</span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">
@@ -1554,6 +1633,17 @@ export default function APIPageClient({ machineId }) {
                 ))}
                 {!detailsKey.scopes?.length && <span className="text-sm text-text-muted">None</span>}
               </div>
+            </DetailRow>
+            <DetailRow label="Allowed Providers">
+              {detailsKey.allowedProviders?.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {detailsKey.allowedProviders.map((p) => (
+                    <KeyChip key={p} icon="hub">{p}</KeyChip>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-sm text-text-muted">All providers</span>
+              )}
             </DetailRow>
             {(detailsKey.ownerType || detailsKey.ownerId) && (
               <DetailRow label="Owner">

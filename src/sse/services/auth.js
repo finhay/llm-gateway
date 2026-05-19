@@ -396,3 +396,14 @@ export async function authenticateApiKey(request, { settings = null, requiredSco
 export async function isValidApiKey(apiKey) {
   return Boolean(await validateApiKey(apiKey));
 }
+
+export function isProviderAllowed(keyRecord, provider) {
+  if (!keyRecord || !provider) return true;
+  const allowed = keyRecord.allowedProviders;
+  if (!Array.isArray(allowed) || allowed.length === 0) return true;
+  return allowed.includes(provider);
+}
+
+export function providerNotAllowedError(provider) {
+  return { status: 403, message: `API key not allowed to use provider: ${provider}` };
+}

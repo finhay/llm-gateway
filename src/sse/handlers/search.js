@@ -5,6 +5,7 @@ import {
   authenticateApiKey,
   API_KEY_SCOPES,
   extractApiKey,
+  isProviderAllowed,
 } from "../services/auth.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
@@ -73,7 +74,7 @@ export async function handleSearch(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings, auth.keyRecord),
       log,
       comboName: providerInput,
       comboStrategy,
@@ -81,10 +82,10 @@ export async function handleSearch(request) {
     });
   }
 
-  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings, auth.keyRecord);
 }
 
-async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings) {
+async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings, keyRecord) {
   const query = body.query;
   const providerId = resolveProviderId(providerInput);
   const resolvedProvider = AI_PROVIDERS[providerId];
@@ -92,6 +93,11 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   if (!resolvedProvider) {
     log.warn("SEARCH", "Unknown provider", { provider: providerInput });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
+  }
+
+  if (!isProviderAllowed(keyRecord, providerId)) {
+    log.warn("AUTH", `API key not allowed to use provider: ${providerId}`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `API key not allowed to use provider: ${providerId}`);
   }
 
   const providerConfig = resolvedProvider.searchConfig;

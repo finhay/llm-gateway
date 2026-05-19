@@ -26,6 +26,7 @@ export async function POST(request) {
     const machineId = await getConsistentMachineId();
     const apiKey = await createApiKey(name, machineId, {
       scopes: body.scopes,
+      allowedProviders: body.allowedProviders,
       ownerType: body.ownerType,
       ownerId: body.ownerId,
       expiresAt: body.expiresAt,

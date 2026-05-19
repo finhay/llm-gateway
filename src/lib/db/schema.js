@@ -82,6 +82,7 @@ export const TABLES = {
       ownerType: "TEXT",
       ownerId: "TEXT",
       scopes: "TEXT NOT NULL DEFAULT '[]'",
+      allowedProviders: "TEXT NOT NULL DEFAULT '[]'",
       status: "TEXT NOT NULL DEFAULT 'active'",
       isActive: "INTEGER DEFAULT 1",
       expiresAt: "TEXT",

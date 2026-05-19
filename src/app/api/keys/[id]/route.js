@@ -29,6 +29,7 @@ export async function PUT(request, { params }) {
     for (const field of [
       "name",
       "scopes",
+      "allowedProviders",
       "ownerType",
       "ownerId",
       "expiresAt",

@@ -4,6 +4,7 @@ import {
   clearAccountError,
   authenticateApiKey,
   API_KEY_SCOPES,
+  isProviderAllowed,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -52,7 +53,7 @@ export async function handleImageGeneration(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId }),
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId, keyRecord: auth.keyRecord }),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -60,14 +61,19 @@ export async function handleImageGeneration(request) {
     });
   }
 
-  return handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId });
+  return handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, keyRecord: auth.keyRecord });
 }
 
-async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId } = {}) {
+async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, keyRecord } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+
+  if (!isProviderAllowed(keyRecord, provider)) {
+    log.warn("AUTH", `API key not allowed to use provider: ${provider}`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `API key not allowed to use provider: ${provider}`);
+  }
 
   // noAuth providers — no credential needed
   if (NO_AUTH_PROVIDERS.has(provider)) {

@@ -33,6 +33,14 @@ function normalizeScopes(scopes) {
   return normalized.length ? [...new Set(normalized)] : DEFAULT_SCOPES;
 }
 
+function normalizeAllowedProviders(allowedProviders) {
+  if (!Array.isArray(allowedProviders)) return [];
+  const normalized = allowedProviders
+    .filter((p) => typeof p === "string" && p.trim())
+    .map((p) => p.trim());
+  return [...new Set(normalized)];
+}
+
 function normalizeStatus(row) {
   if (row.status) return row.status;
   return row.isActive === 0 || row.isActive === false ? "revoked" : "active";
@@ -49,6 +57,7 @@ function rowToKey(row, { includeSecrets = false } = {}) {
     ownerType: row.ownerType,
     ownerId: row.ownerId,
     scopes: normalizeScopes(parseJson(row.scopes, DEFAULT_SCOPES)),
+    allowedProviders: normalizeAllowedProviders(parseJson(row.allowedProviders, [])),
     status,
     isActive: status === "active" && row.isActive !== 0 && row.revokedAt == null,
     expiresAt: row.expiresAt,
@@ -83,6 +92,7 @@ function keyToDbFields(data = {}) {
   if ("ownerType" in data) fields.ownerType = data.ownerType || null;
   if ("ownerId" in data) fields.ownerId = data.ownerId || null;
   if ("scopes" in data) fields.scopes = stringifyJson(normalizeScopes(data.scopes));
+  if ("allowedProviders" in data) fields.allowedProviders = stringifyJson(normalizeAllowedProviders(data.allowedProviders));
   if ("status" in data) fields.status = data.status || "active";
   if ("isActive" in data) {
     fields.isActive = data.isActive === false ? 0 : 1;
@@ -159,6 +169,7 @@ export async function createApiKey(name, machineId, options = {}) {
     ownerType: options.ownerType || null,
     ownerId: options.ownerId || null,
     scopes: normalizeScopes(options.scopes),
+    allowedProviders: normalizeAllowedProviders(options.allowedProviders),
     status: "active",
     isActive: true,
     expiresAt: options.expiresAt || null,
@@ -176,8 +187,8 @@ export async function createApiKey(name, machineId, options = {}) {
 
   db.transaction(() => {
     db.run(
-      `INSERT INTO apiKeys(id, key, keyHash, keyPrefix, name, machineId, ownerType, ownerId, scopes, status, isActive, expiresAt, rateLimitRpm, rateLimitRpd, budgetLimitUsd, budgetPeriod, budgetSpentUsd, createdBy, updatedAt, updatedBy, metadata, createdAt)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO apiKeys(id, key, keyHash, keyPrefix, name, machineId, ownerType, ownerId, scopes, allowedProviders, status, isActive, expiresAt, rateLimitRpm, rateLimitRpd, budgetLimitUsd, budgetPeriod, budgetSpentUsd, createdBy, updatedAt, updatedBy, metadata, createdAt)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         apiKey.id,
         legacyKeyPlaceholder(apiKey.id),
@@ -188,6 +199,7 @@ export async function createApiKey(name, machineId, options = {}) {
         apiKey.ownerType,
         apiKey.ownerId,
         stringifyJson(apiKey.scopes),
+        stringifyJson(apiKey.allowedProviders),
         apiKey.status,
         1,
         apiKey.expiresAt,

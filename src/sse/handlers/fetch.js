@@ -5,6 +5,7 @@ import {
   authenticateApiKey,
   API_KEY_SCOPES,
   extractApiKey,
+  isProviderAllowed,
 } from "../services/auth.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
@@ -83,7 +84,7 @@ export async function handleFetch(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings, auth.keyRecord),
       log,
       comboName: providerInput,
       comboStrategy,
@@ -91,10 +92,10 @@ export async function handleFetch(request) {
     });
   }
 
-  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings, auth.keyRecord);
 }
 
-async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings) {
+async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings, keyRecord) {
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -104,6 +105,11 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   if (!resolvedProvider) {
     log.warn("FETCH", "Unknown provider", { provider: providerInput });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
+  }
+
+  if (!isProviderAllowed(keyRecord, providerId)) {
+    log.warn("AUTH", `API key not allowed to use provider: ${providerId}`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `API key not allowed to use provider: ${providerId}`);
   }
 
   const providerConfig = resolvedProvider.fetchConfig;

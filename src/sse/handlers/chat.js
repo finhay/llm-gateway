@@ -7,6 +7,7 @@ import {
   authenticateApiKey,
   API_KEY_SCOPES,
   extractApiKey,
+  isProviderAllowed,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings } from "@/lib/localDb";
@@ -147,6 +148,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+  if (!isProviderAllowed(clientRawRequest?.apiKeyRecord, provider)) {
+    log.warn("AUTH", `API key not allowed to use provider: ${provider}`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `API key not allowed to use provider: ${provider}`);
+  }
 
   // Log model routing (alias → actual model)
   if (modelStr !== `${provider}/${model}`) {
