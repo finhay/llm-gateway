@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 const TUNNEL_BENEFITS = [
   { icon: "public", title: "Access Anywhere", desc: "Use your API from any network" },
@@ -381,21 +382,28 @@ export default function APIPageClient({ machineId }) {
   };
 
   const fetchAvailableProviders = async () => {
+    const seen = new Map();
+    for (const [id, entry] of Object.entries(AI_PROVIDERS)) {
+      if (entry?.hidden) continue;
+      seen.set(id, { id, name: entry?.name || id });
+    }
     try {
-      const res = await fetch("/api/providers");
+      const res = await fetch("/api/provider-nodes");
       const data = await res.json();
-      if (!res.ok) return;
-      const seen = new Map();
-      for (const conn of data.connections || []) {
-        if (!conn.provider) continue;
-        if (!seen.has(conn.provider)) {
-          seen.set(conn.provider, { id: conn.provider, name: conn.name || conn.provider });
+      if (res.ok) {
+        for (const node of data.nodes || []) {
+          if (!node?.id) continue;
+          if (!seen.has(node.id)) {
+            seen.set(node.id, { id: node.id, name: node.name || node.id });
+          }
         }
       }
-      setAvailableProviders(Array.from(seen.values()).sort((a, b) => a.id.localeCompare(b.id)));
     } catch (error) {
-      console.log("Error fetching providers:", error);
+      console.log("Error fetching provider nodes:", error);
     }
+    setAvailableProviders(
+      Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name))
+    );
   };
 
   // u2500u2500u2500 Cloudflare Tunnel handlers
@@ -785,6 +793,12 @@ export default function APIPageClient({ machineId }) {
       prev.includes(providerId)
         ? prev.filter((id) => id !== providerId)
         : [...prev, providerId]
+    );
+  };
+
+  const toggleAllNewKeyAllowedProviders = () => {
+    setNewKeyAllowedProviders((prev) =>
+      prev.length > 0 ? [] : availableProviders.map((provider) => provider.id)
     );
   };
 
@@ -1401,40 +1415,43 @@ export default function APIPageClient({ machineId }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Allowed Providers</p>
-              <p className="text-xs text-text-muted">Leave empty for all</p>
+              <button
+                type="button"
+                onClick={toggleAllNewKeyAllowedProviders}
+                disabled={availableProviders.length === 0}
+                className="text-xs font-medium text-primary hover:underline disabled:text-text-muted disabled:no-underline disabled:opacity-50"
+              >
+                {newKeyAllowedProviders.length > 0 ? "Unselect all" : "Select all"}
+              </button>
             </div>
-            {availableProviders.length === 0 ? (
-              <p className="text-sm text-text-muted">No providers connected yet.</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {availableProviders.map((p) => {
-                  const checked = newKeyAllowedProviders.includes(p.id);
-                  return (
-                    <label
-                      key={p.id}
-                      className={`flex items-center gap-2 rounded-lg border p-2 text-sm cursor-pointer ${
-                        checked ? "border-primary bg-primary/5" : "border-border"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleNewKeyAllowedProvider(p.id)}
-                        className="accent-primary"
-                      />
-                      <span className="truncate">
-                        <span className="font-medium">{p.name}</span>
-                        {p.name !== p.id && (
-                          <span className="ml-1 font-mono text-xs text-text-muted">{p.id}</span>
-                        )}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+            <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+              {availableProviders.map((p) => {
+                const checked = newKeyAllowedProviders.includes(p.id);
+                return (
+                  <label
+                    key={p.id}
+                    className={`flex items-center gap-2 rounded-lg border p-2 text-sm cursor-pointer ${
+                      checked ? "border-primary bg-primary/5" : "border-border"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleNewKeyAllowedProvider(p.id)}
+                      className="accent-primary"
+                    />
+                    <span className="truncate">
+                      <span className="font-medium">{p.name}</span>
+                      {p.name !== p.id && (
+                        <span className="ml-1 font-mono text-xs text-text-muted">{p.id}</span>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex flex-col gap-2">

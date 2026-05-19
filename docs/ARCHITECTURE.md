@@ -182,7 +182,7 @@ Usage and audit data:
 - API keys are one-time reveal credentials: the raw secret is returned only on create/rotate, while SQLite stores a keyed hash plus a display prefix.
 - Runtime identity resolves from gateway API key metadata rather than dashboard sessions: owner metadata, scopes, status, expiry, rate limits, and budgets.
 - Scoped keys are enforced through `src/sse/services/auth.js` before provider execution. Initial scopes include `chat:write`, `embeddings:write`, `models:read`, `tokens:count`, `cloud:sync`, `keys:read`, `keys:write`, `admin:*`, and `*`.
-- Keys can also be locked to a subset of upstream providers via `allowedProviders` — empty means "any provider", otherwise the handler returns 403 for any resolved provider not in the list.
+- Keys can also be locked to a subset of upstream providers via `allowedProviders` — empty means "any provider", otherwise the handler returns 403 for any resolved provider not in the list. The dashboard selector is based on all supported built-in providers plus custom provider nodes, not only currently connected accounts.
 - Key revocation is soft/delete-as-revoke so usage and admin audit history remain attributable.
 - Team-member dashboard login is not required for the internal gateway MVP.
 - Provider secrets persisted in `providerConnections` entries.

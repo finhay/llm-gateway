@@ -1120,7 +1120,7 @@ docker pull decolua/9router:latest   # update to latest
 
 Notes:
 - Gateway API keys are one-time reveal credentials. Copy the key when creating or rotating it; later list/detail APIs show only a safe prefix.
-- API keys are stored as keyed hashes in SQLite and can carry scopes, owner metadata, expiry, revocation state, per-key rate limits, and budget fields.
+- API keys are stored as keyed hashes in SQLite and can carry scopes, owner metadata, expiry, revocation state, allowed provider restrictions, per-key rate limits, and budget fields.
 - When `REQUIRE_API_KEY=true`, `/v1/*`, `/v1beta/*`, model listing, token counting, and cloud sync routes require a valid gateway key. Cloud sync requires `cloud:sync` or wildcard scope.
 - Common scopes include `chat:write`, `embeddings:write`, `models:read`, `tokens:count`, `cloud:sync`, `keys:read`, `keys:write`, `admin:*`, and `*`.
 - Lowercase proxy variables are also supported: `http_proxy`, `https_proxy`, `all_proxy`, `no_proxy`.
