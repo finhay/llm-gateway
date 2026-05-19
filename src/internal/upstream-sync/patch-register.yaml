@@ -1,0 +1,5 @@
+patches:
+  - file: src/sse/handlers/chat.js
+    reason: Run internal security scanner before provider routing and pass provider policy filter through routing.
+  - file: src/sse/services/auth.js
+    reason: Apply internal provider policy filter during credential selection.

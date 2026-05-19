@@ -148,6 +148,29 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
     ],
   },
+  securityEvents: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      timestamp: "TEXT NOT NULL",
+      requestId: "TEXT",
+      apiKey: "TEXT",
+      model: "TEXT",
+      provider: "TEXT",
+      kind: "TEXT NOT NULL",
+      type: "TEXT NOT NULL",
+      severity: "TEXT NOT NULL",
+      classification: "TEXT",
+      location: "TEXT NOT NULL",
+      fingerprint: "TEXT NOT NULL",
+      action: "TEXT NOT NULL",
+      ruleId: "TEXT",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_sec_ts ON securityEvents(timestamp DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_sec_kind ON securityEvents(kind, type)",
+      "CREATE INDEX IF NOT EXISTS idx_sec_action ON securityEvents(action)",
+    ],
+  },
 };
 
 export function buildCreateTableSql(name, def) {

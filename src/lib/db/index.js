@@ -67,6 +67,11 @@ export {
   saveRequestDetail, getRequestDetails, getRequestDetailById,
 } from "./repos/requestDetailsRepo.js";
 
+// Security events
+export {
+  recordSecurityEvents, getSecurityEvents, getSecurityEventStats,
+} from "@/internal/audit/index.js";
+
 // Export/import full DB
 export async function exportDb() {
   const db = await getAdapter();

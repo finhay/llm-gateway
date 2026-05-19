@@ -36,6 +36,15 @@ const DEFAULT_SETTINGS = {
   rtkEnabled: true,
   cavemanEnabled: false,
   cavemanLevel: "full",
+  securityScan: {
+    secretsEnabled: true,
+    secretsMode: "enforce",
+    dlpEnabled: true,
+    dlpMode: "enforce",
+    customDlpPatterns: [],
+    providerRiskOverrides: {},
+    detectorOverrides: {},
+  },
 };
 
 async function readRaw() {
