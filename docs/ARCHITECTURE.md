@@ -1,11 +1,13 @@
 # 9Router Architecture
 
-_Last updated: 2026-02-06_
+_Last updated: 2026-05-19_
 
 ## Executive Summary
 
 9Router is a local AI routing gateway and dashboard built on Next.js.
 It provides a single OpenAI-compatible endpoint (`/v1/*`) and routes traffic across multiple upstream providers with translation, fallback, token refresh, and usage tracking.
+
+For an internal team AI Gateway, the target architecture separates the data plane from an admin-only control plane. Developers and automation call the `/v1/*` API with IT-provisioned gateway API keys; they do not log in to the dashboard. IT/Platform/Security administrators use the dashboard to manage provider credentials, scoped API keys, policies, budgets, and audit workflows.
 
 Core capabilities:
 
@@ -15,6 +17,7 @@ Core capabilities:
 - Account-level fallback (multi-account per provider)
 - OAuth + API-key provider connection management
 - Local persistence for providers, keys, aliases, combos, settings, pricing
+- API-key-based request identity for runtime clients
 - Usage/cost tracking and request logging
 - Optional cloud sync for multi-device/state sync
 
@@ -28,7 +31,7 @@ Primary runtime model:
 ### In Scope
 
 - Local gateway runtime
-- Dashboard management APIs
+- Dashboard management APIs for administrators
 - Provider authentication and token refresh
 - Request translation and SSE streaming
 - Local state + usage persistence
@@ -40,24 +43,40 @@ Primary runtime model:
 - Provider SLA/control plane outside local process
 - External CLI binaries themselves (Claude CLI, Codex CLI, etc.)
 
+
+## Internal AI Gateway Target Model
+
+When deployed for a team or company, 9Router should be treated as two planes:
+
+- **Data plane:** OpenAI/Anthropic-compatible API routes used by Claude Code, Cursor, Codex, CI jobs, and internal bots. Runtime identity comes from scoped gateway API keys.
+- **Control plane:** Admin-only dashboard and management APIs used by IT/Platform/Security to configure providers, issue/revoke keys, assign ownership metadata, enforce policies, manage budgets, and review audit/usage data.
+
+Team members do not need dashboard accounts for MVP. A gateway API key should carry metadata such as owner type, team, project, environment, allowed clients, scopes, budget policy, and model/provider policy.
+
 ## High-Level System Context
 
 ```mermaid
 flowchart LR
-    subgraph Clients[Developer Clients]
+    subgraph Clients[Developer and Automation Clients]
         C1[Claude Code]
         C2[Codex CLI]
         C3[OpenClaw / Droid / Cline / Continue / Roo]
         C4[Custom OpenAI-compatible clients]
-        BROWSER[Browser Dashboard]
+        BOT[CI jobs / internal bots]
     end
 
-    subgraph Router[9Router Local Process]
+    subgraph Admins[Admin Operators]
+        BROWSER[Admin Browser Dashboard]
+    end
+
+    subgraph Router[9Router Gateway Process]
         API[V1 Compatibility API\n/v1/*]
-        DASH[Dashboard + Management API\n/api/*]
+        KEYAUTH[Gateway API Key Auth\nidentity metadata]
+        POLICY[Policy / Budget / DLP Layer]
+        DASH[Admin Dashboard + Management API\n/api/*]
         CORE[SSE + Translation Core\nopen-sse + src/sse]
-        DB[(db.json)]
-        UDB[(usage.json + log.txt)]
+        DB[(Gateway config DB)]
+        UDB[(Usage + audit logs)]
     end
 
     subgraph Upstreams[Upstream Providers]
@@ -74,10 +93,17 @@ flowchart LR
     C2 --> API
     C3 --> API
     C4 --> API
+    BOT --> API
     BROWSER --> DASH
 
-    API --> CORE
+    API --> KEYAUTH
+    KEYAUTH --> POLICY
+    POLICY --> CORE
     DASH --> DB
+    DASH --> UDB
+    KEYAUTH --> DB
+    POLICY --> DB
+    POLICY --> UDB
     CORE --> DB
     CORE --> UDB
 
@@ -110,11 +136,11 @@ Important compatibility routes:
 
 Management domains:
 
-- Auth/settings: `src/app/api/auth/*`, `src/app/api/settings/*`
+- Admin auth/settings: `src/app/api/auth/*`, `src/app/api/settings/*`
 - Providers/connections: `src/app/api/providers*`
 - Provider nodes: `src/app/api/provider-nodes*`
 - OAuth: `src/app/api/oauth/*`
-- Keys/aliases/combos/pricing: `src/app/api/keys*`, `src/app/api/models/alias`, `src/app/api/combos*`, `src/app/api/pricing`
+- Gateway API keys/aliases/combos/pricing: `src/app/api/keys*`, `src/app/api/models/alias`, `src/app/api/combos*`, `src/app/api/pricing`
 - Usage: `src/app/api/usage/*`
 - Sync/cloud: `src/app/api/sync/*`, `src/app/api/cloud/*`
 - CLI tooling helpers: `src/app/api/cli-tools/*`
@@ -149,8 +175,10 @@ Usage DB:
 
 ## 4) Auth + Security Surfaces
 
-- Dashboard cookie auth: `src/proxy.js`, `src/app/api/auth/login/route.js`
-- API key generation/verification: `src/shared/utils/apiKey.js`
+- Admin dashboard cookie auth: `src/proxy.js`, `src/app/api/auth/login/route.js`
+- Gateway API key generation/verification: `src/shared/utils/apiKey.js`
+- Runtime identity should resolve from gateway API key metadata rather than dashboard sessions
+- Team-member dashboard login is not required for the internal gateway MVP
 - Provider secrets persisted in `providerConnections` entries
 - Optional proxy support for upstream calls via env proxy variables (`open-sse/utils/proxyFetch.js`)
 
@@ -167,6 +195,8 @@ sequenceDiagram
     autonumber
     participant Client as CLI/SDK Client
     participant Route as /api/v1/chat/completions
+    participant KeyAuth as API Key Auth
+    participant Policy as Policy/Budget/DLP
     participant Chat as src/sse/handlers/chat
     participant Core as open-sse/handlers/chatCore
     participant Model as Model Resolver
@@ -176,7 +206,11 @@ sequenceDiagram
     participant Stream as Stream Translator
     participant Usage as usageDb
 
-    Client->>Route: POST /v1/chat/completions
+    Client->>Route: POST /v1/chat/completions with gateway API key
+    Route->>KeyAuth: verify key and resolve metadata
+    KeyAuth-->>Route: owner/team/project/environment/scopes
+    Route->>Policy: evaluate policy, DLP, and budget
+    Policy-->>Route: allow/redact/deny/route constraints
     Route->>Chat: handleChat(request)
     Chat->>Model: parse/resolve model or combo
 
