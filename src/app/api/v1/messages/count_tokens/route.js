@@ -1,3 +1,6 @@
+import { getSettings } from "@/lib/localDb";
+import { authenticateApiKey, API_KEY_SCOPES } from "@/sse/services/auth.js";
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -15,6 +18,15 @@ export async function OPTIONS() {
  * POST /v1/messages/count_tokens - Mock token count response
  */
 export async function POST(request) {
+  const settings = await getSettings();
+  const auth = await authenticateApiKey(request, { settings, requiredScope: API_KEY_SCOPES.TOKENS_COUNT });
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: auth.message }), {
+      status: auth.status,
+      headers: { "Content-Type": "application/json", ...CORS_HEADERS }
+    });
+  }
+
   let body;
   try {
     body = await request.json();

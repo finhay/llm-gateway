@@ -34,6 +34,40 @@ Common issues and solutions when using 9Router.
 
 ---
 
+## API Key Invalid or Missing
+
+**Problem:** `/v1/*`, `/v1beta/*`, model listing, token counting, or cloud sync returns `Missing API key`, `Invalid API key`, or `API key scope not allowed`.
+
+**Causes:**
+- `REQUIRE_API_KEY=true` and the request omitted `Authorization: Bearer <key>` or `x-api-key`.
+- The key was revoked, rotated, expired, or copied incorrectly.
+- The key lacks the required scope, such as `chat:write`, `models:read`, `tokens:count`, or `cloud:sync`.
+- A per-key rate limit or budget has been exhausted.
+
+**Solutions:**
+
+1. **Create or rotate a key:**
+   ```
+   Dashboard → Endpoint → API Keys
+   → Create or Rotate Key
+   → Copy the raw key immediately
+   ```
+   Keys are shown only once. Existing key lists show a safe prefix, not the recoverable secret.
+
+2. **Check scopes and status:**
+   ```
+   Dashboard → Endpoint → API Keys
+   → Confirm status is active and scopes match the endpoint
+   ```
+
+3. **Use the right header:**
+   ```bash
+   curl http://localhost:20128/v1/models \
+     -H "Authorization: Bearer your-api-key"
+   ```
+
+---
+
 ## Rate Limiting
 
 **Problem:** "Rate limit exceeded" or "Too many requests" errors.

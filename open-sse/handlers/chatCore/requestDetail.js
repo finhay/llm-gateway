@@ -56,10 +56,13 @@ export function extractUsageFromResponse(responseBody) {
 }
 
 export function buildRequestDetail(base, overrides = {}) {
+  const apiKeyRecord = base.apiKeyRecord || base.clientRawRequest?.apiKeyRecord;
   return {
     provider: base.provider || "unknown",
     model: base.model || "unknown",
     connectionId: base.connectionId || undefined,
+    apiKeyId: base.apiKeyId || apiKeyRecord?.id || undefined,
+    apiKeyPrefix: base.apiKeyPrefix || apiKeyRecord?.keyPrefix || undefined,
     timestamp: new Date().toISOString(),
     latency: base.latency || { ttft: 0, total: 0 },
     tokens: base.tokens || { prompt_tokens: 0, completion_tokens: 0 },
@@ -72,7 +75,8 @@ export function buildRequestDetail(base, overrides = {}) {
   };
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE" }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, apiKeyRecord, endpoint, label = "USAGE" }) {
+  apiKeyRecord ||= endpoint?.apiKeyRecord;
   if (!tokens || typeof tokens !== "object") return;
 
   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
@@ -97,6 +101,9 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
+    apiKeyRecord: apiKeyRecord || undefined,
+    apiKeyId: apiKeyRecord?.id || undefined,
+    apiKeyPrefix: apiKeyRecord?.keyPrefix || undefined,
     endpoint: endpoint || null
   }).catch(() => {});
 }

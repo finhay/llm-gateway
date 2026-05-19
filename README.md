@@ -944,6 +944,10 @@ Settings → Models → Advanced:
 
 Or use combo: `premium-coding`
 
+### Gateway API Keys
+
+Create or rotate keys from `Dashboard → Endpoint → API Keys`. Keys are shown once when created or rotated; copy the raw value immediately. Existing keys can be revoked, scoped, rate-limited, and budgeted, but their raw secret cannot be recovered later.
+
 ### Claude Code
 
 Edit `~/.claude/config.json`:
@@ -1106,7 +1110,8 @@ docker pull decolua/9router:latest   # update to latest
 | `CLOUD_URL` | `https://9router.com` | Server-side cloud sync endpoint base URL |
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | Backward-compatible/public base URL (prefer `BASE_URL` for server runtime) |
 | `NEXT_PUBLIC_CLOUD_URL` | `https://9router.com` | Backward-compatible/public cloud URL (prefer `CLOUD_URL` for server runtime) |
-| `API_KEY_SECRET` | `endpoint-proxy-api-key-secret` | HMAC secret for generated API keys |
+| `API_KEY_SECRET` | `endpoint-proxy-api-key-secret` | HMAC secret for generated API key format and hashed-at-rest lookup |
+| `API_KEY_HASH_SECRET` | falls back to `API_KEY_SECRET` | Optional separate HMAC secret for API key database lookup hashes |
 | `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Salt for stable machine ID hashing |
 | `ENABLE_REQUEST_LOGS` | `false` | Enables request/response logs under `logs/` |
 | `AUTH_COOKIE_SECURE` | `false` | Force `Secure` auth cookie (set `true` behind HTTPS reverse proxy) |
@@ -1114,6 +1119,10 @@ docker pull decolua/9router:latest   # update to latest
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | empty | Optional outbound proxy for upstream provider calls |
 
 Notes:
+- Gateway API keys are one-time reveal credentials. Copy the key when creating or rotating it; later list/detail APIs show only a safe prefix.
+- API keys are stored as keyed hashes in SQLite and can carry scopes, owner metadata, expiry, revocation state, per-key rate limits, and budget fields.
+- When `REQUIRE_API_KEY=true`, `/v1/*`, `/v1beta/*`, model listing, token counting, and cloud sync routes require a valid gateway key. Cloud sync requires `cloud:sync` or wildcard scope.
+- Common scopes include `chat:write`, `embeddings:write`, `models:read`, `tokens:count`, `cloud:sync`, `keys:read`, `keys:write`, `admin:*`, and `*`.
 - Lowercase proxy variables are also supported: `http_proxy`, `https_proxy`, `all_proxy`, `no_proxy`.
 - `.env` is not baked into Docker image (`.dockerignore`); inject runtime config with `--env-file` or `-e`.
 - On Windows, `APPDATA` can be used for local storage path resolution.

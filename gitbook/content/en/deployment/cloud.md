@@ -41,6 +41,11 @@ export JWT_SECRET="your-secure-secret-change-this-to-random-string"
 export INITIAL_PASSWORD="your-secure-password"
 export DATA_DIR="/var/lib/9router"
 export NODE_ENV="production"
+export REQUIRE_API_KEY="true"
+export API_KEY_SECRET="replace-with-random-secret"
+export API_KEY_HASH_SECRET="replace-with-another-random-secret"
+export MACHINE_ID_SALT="replace-with-random-salt"
+export AUTH_COOKIE_SECURE="true"
 ```
 
 **Environment Variables:**
@@ -51,6 +56,11 @@ export NODE_ENV="production"
 | `INITIAL_PASSWORD` | `123456` | Dashboard login password |
 | `DATA_DIR` | `~/.9router` | Database and data storage path |
 | `NODE_ENV` | `development` | Set to `production` for deployment |
+| `REQUIRE_API_KEY` | `false` | Enforce gateway API keys on `/v1/*`, model listing, token counting, and cloud sync routes |
+| `API_KEY_SECRET` | built-in fallback | HMAC secret for generated gateway key format |
+| `API_KEY_HASH_SECRET` | falls back to `API_KEY_SECRET` | Optional separate HMAC secret for hashed-at-rest API key lookup |
+| `MACHINE_ID_SALT` | built-in fallback | Salt for stable machine ID hashing in generated gateway keys |
+| `AUTH_COOKIE_SECURE` | `false` | Force secure dashboard cookies behind HTTPS reverse proxy |
 | `ENABLE_REQUEST_LOGS` | `false` | Enable debug request/response logs |
 
 ### Step 5: Create Data Directory
@@ -323,7 +333,18 @@ openssl rand -base64 32
 export JWT_SECRET="generated-secret-here"
 ```
 
-### 2. Firewall Configuration
+### 2. Enforce Gateway API Keys
+
+For internet-exposed deployments, set `REQUIRE_API_KEY=true` and create scoped keys from the dashboard. Gateway keys are one-time reveal credentials: copy the raw key at creation or rotation time because later views show only a safe prefix.
+
+Recommended production behavior:
+
+- Use scoped keys such as `chat:write`, `embeddings:write`, `models:read`, and `cloud:sync` instead of wildcard keys where possible.
+- Revoke keys instead of deleting audit history.
+- Configure per-key rate limits and budgets for shared/team deployments.
+- Rotate keys when a client or machine is decommissioned.
+
+### 3. Firewall Configuration
 
 ```bash
 # Allow SSH
@@ -341,7 +362,7 @@ sudo ufw allow 20128/tcp
 sudo ufw enable
 ```
 
-### 3. Restrict Dashboard Access
+### 4. Restrict Dashboard Access
 
 If you only need API access, restrict dashboard port:
 
@@ -357,7 +378,7 @@ ssh -L 3000:localhost:3000 user@your-server.com
 # Then open http://localhost:3000 in your browser
 ```
 
-### 4. Regular Updates
+### 5. Regular Updates
 
 ```bash
 # Update system packages

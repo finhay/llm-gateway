@@ -1,9 +1,41 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings } from "@/lib/localDb";
+import { getProviderConnections, validateApiKey, updateApiKeyLastUsed, updateProviderConnection, getSettings } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { APP_CONFIG } from "@/shared/constants/config";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
+
+export const API_KEY_SCOPES = Object.freeze({
+  ALL: "*",
+  CHAT_WRITE: "chat:write",
+  EMBEDDINGS_WRITE: "embeddings:write",
+  IMAGES_WRITE: "images:write",
+  TTS_WRITE: "tts:write",
+  STT_WRITE: "stt:write",
+  SEARCH_WRITE: "search:write",
+  FETCH_WRITE: "fetch:write",
+  MODELS_READ: "models:read",
+  TOKENS_COUNT: "tokens:count",
+  CLOUD_SYNC: "cloud:sync",
+  KEYS_READ: "keys:read",
+  KEYS_WRITE: "keys:write",
+  ADMIN: "admin:*",
+});
+
+const rateLimiter = globalThis._apiKeyRateLimiter || new Map();
+globalThis._apiKeyRateLimiter = rateLimiter;
+
+function isInternalRequest(request) {
+  const token = request.headers.get("x-9r-internal-token");
+  if (!token || token !== APP_CONFIG.machineId) return false;
+  try {
+    const url = new URL(request.url);
+    return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
 
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
@@ -300,10 +332,67 @@ export function extractApiKey(request) {
   return null;
 }
 
+function hasScope(keyRecord, requiredScope) {
+  if (!requiredScope) return true;
+  const scopes = Array.isArray(keyRecord?.scopes) ? keyRecord.scopes : [];
+  return scopes.includes(API_KEY_SCOPES.ALL) || scopes.includes(API_KEY_SCOPES.ADMIN) || scopes.includes(requiredScope);
+}
+
+function checkRateLimit(keyRecord) {
+  const limit = Number(keyRecord?.rateLimitRpm || 0);
+  if (!Number.isFinite(limit) || limit <= 0) return null;
+  const now = Date.now();
+  const current = rateLimiter.get(keyRecord.id);
+  const windowStart = current && now - current.windowStart < 60_000 ? current.windowStart : now;
+  const count = current && windowStart === current.windowStart ? current.count + 1 : 1;
+  rateLimiter.set(keyRecord.id, { windowStart, count });
+  if (count > limit) return { status: 429, message: "API key rate limit exceeded" };
+  return null;
+}
+
+function checkBudget(keyRecord) {
+  const limit = Number(keyRecord?.budgetLimitUsd || 0);
+  if (!Number.isFinite(limit) || limit <= 0) return null;
+  const spent = Number(keyRecord?.budgetSpentUsd || 0);
+  if (spent >= limit) return { status: 429, message: "API key budget exhausted" };
+  return null;
+}
+
+export async function authenticateApiKey(request, { settings = null, requiredScope = null } = {}) {
+  const resolvedSettings = settings || await getSettings();
+  const rawKey = extractApiKey(request);
+
+  if (!resolvedSettings.requireApiKey) {
+    return { ok: true, keyRecord: null, rawKey };
+  }
+  if (isInternalRequest(request)) {
+    return { ok: true, keyRecord: null, rawKey: null, internal: true };
+  }
+  if (!rawKey) {
+    return { ok: false, status: 401, message: "Missing API key" };
+  }
+
+  const keyRecord = await validateApiKey(rawKey);
+  if (!keyRecord) {
+    return { ok: false, status: 401, message: "Invalid API key" };
+  }
+  if (!hasScope(keyRecord, requiredScope)) {
+    return { ok: false, status: 403, message: "API key scope not allowed" };
+  }
+
+  const rateLimit = checkRateLimit(keyRecord);
+  if (rateLimit) return { ok: false, ...rateLimit };
+
+  const budget = checkBudget(keyRecord);
+  if (budget) return { ok: false, ...budget };
+
+  await updateApiKeyLastUsed(keyRecord.id);
+  return { ok: true, keyRecord, rawKey };
+}
+
 /**
  * Validate API key (optional - for local use can skip)
  */
 export async function isValidApiKey(apiKey) {
-  if (!apiKey) return false;
-  return await validateApiKey(apiKey);
+  return Boolean(await validateApiKey(apiKey));
 }

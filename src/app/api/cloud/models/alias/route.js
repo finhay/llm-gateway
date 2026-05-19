@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
-import { validateApiKey, getModelAliases, setModelAlias } from "@/models";
+import { getModelAliases, setModelAlias } from "@/models";
+import { getSettings } from "@/lib/localDb";
+import { authenticateApiKey, API_KEY_SCOPES } from "@/sse/services/auth.js";
 
 // PUT /api/cloud/models/alias - Set model alias (for cloud/CLI)
 export async function PUT(request) {
   try {
-    const authHeader = request.headers.get("authorization");
-    const apiKey = authHeader?.replace("Bearer ", "");
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "Missing API key" }, { status: 401 });
-    }
-
-    const isValid = await validateApiKey(apiKey);
-    if (!isValid) {
-      return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+    const settings = await getSettings();
+    const auth = await authenticateApiKey(request, { settings: { ...settings, requireApiKey: true }, requiredScope: API_KEY_SCOPES.CLOUD_SYNC });
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
     }
 
     const body = await request.json();
@@ -50,16 +46,10 @@ export async function PUT(request) {
 // GET /api/cloud/models/alias - Get all aliases
 export async function GET(request) {
   try {
-    const authHeader = request.headers.get("authorization");
-    const apiKey = authHeader?.replace("Bearer ", "");
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "Missing API key" }, { status: 401 });
-    }
-
-    const isValid = await validateApiKey(apiKey);
-    if (!isValid) {
-      return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+    const settings = await getSettings();
+    const auth = await authenticateApiKey(request, { settings: { ...settings, requireApiKey: true }, requiredScope: API_KEY_SCOPES.CLOUD_SYNC });
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
     }
 
     const aliases = await getModelAliases();

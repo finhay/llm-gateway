@@ -1,26 +1,22 @@
 import { NextResponse } from "next/server";
-import { validateApiKey, getProviderConnections, updateProviderConnection } from "@/models";
+import { getProviderConnections, updateProviderConnection } from "@/models";
+import { getSettings } from "@/lib/localDb";
+import { authenticateApiKey, API_KEY_SCOPES } from "@/sse/services/auth.js";
 
 // Update provider credentials (for cloud token refresh)
 export async function PUT(request) {
   try {
-    const authHeader = request.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Missing API key" }, { status: 401 });
+    const settings = await getSettings();
+    const auth = await authenticateApiKey(request, { settings: { ...settings, requireApiKey: true }, requiredScope: API_KEY_SCOPES.CLOUD_SYNC });
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
     }
 
-    const apiKey = authHeader.slice(7);
     const body = await request.json();
     const { provider, credentials } = body;
 
     if (!provider || !credentials) {
       return NextResponse.json({ error: "Provider and credentials required" }, { status: 400 });
-    }
-
-    // Validate API key
-    const isValid = await validateApiKey(apiKey);
-    if (!isValid) {
-      return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
     }
 
     // Find active connection for provider

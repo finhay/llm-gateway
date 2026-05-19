@@ -122,8 +122,10 @@ Dashboard → Settings → API Keys
 
 **Example API key format:**
 ```
-9r_1234567890abcdef1234567890abcdef
+sk-<machine-id>-<key-id>-<checksum>
 ```
+
+Gateway API keys are shown only once when created or rotated. Copy the raw key immediately; later dashboard and API responses show only a safe prefix. Keys can be scoped, revoked, rotated, rate-limited, and budgeted.
 
 ---
 
@@ -199,6 +201,12 @@ export DATA_DIR="~/.9router"
 export PORT="20128"
 export NODE_ENV="production"
 
+# API key enforcement
+export REQUIRE_API_KEY="true"
+export API_KEY_SECRET="replace-with-random-secret"
+export API_KEY_HASH_SECRET="replace-with-another-random-secret"
+export MACHINE_ID_SALT="replace-with-random-salt"
+
 # Logging
 export ENABLE_REQUEST_LOGS="false"
 ```
@@ -210,8 +218,9 @@ export ENABLE_REQUEST_LOGS="false"
 **Contents:**
 ```
 ~/.9router/
-  ├── db.json           # Database (providers, combos, usage)
-  ├── api-keys.json     # API keys
+  ├── db/
+  │   ├── data.sqlite   # SQLite database (providers, keys, usage, audit)
+  │   └── backups/      # Automatic database backups
   └── logs/             # Request logs (if enabled)
 ```
 

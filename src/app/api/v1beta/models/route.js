@@ -1,3 +1,5 @@
+import { getSettings } from "@/lib/localDb";
+import { authenticateApiKey, API_KEY_SCOPES } from "@/sse/services/auth.js";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 
 /**
@@ -17,8 +19,12 @@ export async function OPTIONS() {
  * GET /v1beta/models - Gemini compatible models list
  * Returns models in Gemini API format
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    const settings = await getSettings();
+    const auth = await authenticateApiKey(request, { settings, requiredScope: API_KEY_SCOPES.MODELS_READ });
+    if (!auth.ok) return Response.json({ error: { message: auth.message } }, { status: auth.status });
+
     // Collect all models from all providers
     const models = [];
     

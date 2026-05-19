@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProviderConnectionById, getApiKeys } from "@/lib/localDb";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { APP_CONFIG } from "@/shared/constants/config";
@@ -7,20 +7,14 @@ import { APP_CONFIG } from "@/shared/constants/config";
 /**
  * Get an active API key to pass through auth when requireApiKey is enabled.
  */
-async function getInternalApiKey() {
-  const keys = await getApiKeys();
-  return keys.find((k) => k.isActive !== false)?.key || null;
-}
-
 /**
  * Ping a single model via internal completions endpoint (OpenAI format).
  * open-sse handles all provider translation automatically.
  */
-async function pingModel(modelId, baseUrl, apiKey) {
+async function pingModel(modelId, baseUrl) {
   const start = Date.now();
   try {
-    const headers = { "Content-Type": "application/json" };
-    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    const headers = { "Content-Type": "application/json", "x-9r-internal-token": APP_CONFIG.machineId };
     const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
       method: "POST",
       headers,
@@ -82,18 +76,16 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "No models configured for this provider" }, { status: 400 });
     }
 
-    const apiKey = await getInternalApiKey();
-
     // Warm up with first model to trigger token refresh (if needed) before parallel calls.
     // This prevents race condition where multiple requests concurrently refresh the same token.
     const [first, ...rest] = models;
-    const firstResult = await pingModel(`${alias}/${first.id}`, baseUrl, apiKey);
+    const firstResult = await pingModel(`${alias}/${first.id}`, baseUrl);
     const results = [{ modelId: first.id, name: first.name || first.id, ...firstResult }];
 
     if (rest.length > 0) {
       const restResults = await Promise.all(
         rest.map(async (model) => {
-          const result = await pingModel(`${alias}/${model.id}`, baseUrl, apiKey);
+          const result = await pingModel(`${alias}/${model.id}`, baseUrl);
           return { modelId: model.id, name: model.name || model.id, ...result };
         })
       );

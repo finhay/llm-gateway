@@ -1,20 +1,15 @@
 import { NextResponse } from "next/server";
-import { validateApiKey, getProviderConnections, getModelAliases } from "@/models";
+import { getProviderConnections, getModelAliases } from "@/models";
+import { getSettings } from "@/lib/localDb";
+import { authenticateApiKey, API_KEY_SCOPES } from "@/sse/services/auth.js";
 
 // Verify API key and return provider credentials
 export async function POST(request) {
   try {
-    const authHeader = request.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Missing API key" }, { status: 401 });
-    }
-
-    const apiKey = authHeader.slice(7);
-
-    // Validate API key
-    const isValid = await validateApiKey(apiKey);
-    if (!isValid) {
-      return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+    const settings = await getSettings();
+    const auth = await authenticateApiKey(request, { settings: { ...settings, requireApiKey: true }, requiredScope: API_KEY_SCOPES.CLOUD_SYNC });
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
     }
 
     // Get active provider connections

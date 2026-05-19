@@ -29,7 +29,21 @@ export {
 
 // API keys
 export {
-  getApiKeys, getApiKeyById, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
+  API_KEY_SCOPES,
+  getApiKeys,
+  getSafeApiKeys,
+  getApiKeyById,
+  createApiKey,
+  updateApiKey,
+  revokeApiKey,
+  rotateApiKey,
+  deleteApiKey,
+  validateApiKey,
+  updateApiKeyLastUsed,
+  incrementApiKeyBudgetSpent,
+  recordApiKeyUsageEvent,
+  getApiKeyUsageEvents,
+  getApiKeyAdminEvents,
 } from "./repos/apiKeysRepo.js";
 
 // Combos
@@ -82,7 +96,34 @@ export async function exportDb() {
     providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
-    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => ({ id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, createdAt: r.createdAt })),
+    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => ({
+      id: r.id,
+      keyPrefix: r.keyPrefix || (r.key ? r.key.slice(0, 12) : ""),
+      name: r.name,
+      machineId: r.machineId,
+      ownerType: r.ownerType,
+      ownerId: r.ownerId,
+      scopes: parseJson(r.scopes, []),
+      status: r.status || (r.isActive === 1 ? "active" : "revoked"),
+      isActive: r.isActive === 1,
+      expiresAt: r.expiresAt,
+      lastUsedAt: r.lastUsedAt,
+      lastRotatedAt: r.lastRotatedAt,
+      rotatedFromKeyId: r.rotatedFromKeyId,
+      revokedAt: r.revokedAt,
+      revokedBy: r.revokedBy,
+      revokeReason: r.revokeReason,
+      rateLimitRpm: r.rateLimitRpm,
+      rateLimitRpd: r.rateLimitRpd,
+      budgetLimitUsd: r.budgetLimitUsd,
+      budgetPeriod: r.budgetPeriod,
+      budgetSpentUsd: r.budgetSpentUsd,
+      createdBy: r.createdBy,
+      updatedAt: r.updatedAt,
+      updatedBy: r.updatedBy,
+      metadata: parseJson(r.metadata, {}),
+      createdAt: r.createdAt,
+    })),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     modelAliases: {},
     customModels: [],
@@ -142,8 +183,38 @@ export async function importDb(payload) {
     }
     for (const k of payload.apiKeys || []) {
       db.run(
-        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
-        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString()]
+        `INSERT OR REPLACE INTO apiKeys(id, key, keyHash, keyPrefix, name, machineId, ownerType, ownerId, scopes, status, isActive, expiresAt, lastUsedAt, lastRotatedAt, rotatedFromKeyId, revokedAt, revokedBy, revokeReason, rateLimitRpm, rateLimitRpd, budgetLimitUsd, budgetPeriod, budgetSpentUsd, createdBy, updatedAt, updatedBy, metadata, createdAt)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          k.id,
+          k.key || null,
+          k.keyHash || null,
+          k.keyPrefix || (k.key ? k.key.slice(0, 12) : ""),
+          k.name || null,
+          k.machineId || null,
+          k.ownerType || null,
+          k.ownerId || null,
+          stringifyJson(k.scopes || ["*"]),
+          k.status || (k.isActive === false ? "revoked" : "active"),
+          k.isActive === false ? 0 : 1,
+          k.expiresAt || null,
+          k.lastUsedAt || null,
+          k.lastRotatedAt || null,
+          k.rotatedFromKeyId || null,
+          k.revokedAt || null,
+          k.revokedBy || null,
+          k.revokeReason || null,
+          k.rateLimitRpm == null ? null : Number(k.rateLimitRpm),
+          k.rateLimitRpd == null ? null : Number(k.rateLimitRpd),
+          k.budgetLimitUsd == null ? null : Number(k.budgetLimitUsd),
+          k.budgetPeriod || null,
+          k.budgetSpentUsd == null ? 0 : Number(k.budgetSpentUsd),
+          k.createdBy || null,
+          k.updatedAt || null,
+          k.updatedBy || null,
+          stringifyJson(k.metadata || {}),
+          k.createdAt || new Date().toISOString(),
+        ]
       );
     }
     for (const c of payload.combos || []) {

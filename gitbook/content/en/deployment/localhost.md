@@ -140,7 +140,9 @@ chmod 755 ~/.9router
 
 ```
 ~/.9router/
-├── db.json           # Main database (providers, combos, settings)
+├── db/
+│   ├── data.sqlite   # SQLite database (providers, keys, usage, audit)
+│   └── backups/      # Automatic database backups
 ├── logs/             # Application logs
 └── cache/            # Temporary cache files
 ```

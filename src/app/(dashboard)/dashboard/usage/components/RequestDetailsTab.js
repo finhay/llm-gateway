@@ -100,9 +100,11 @@ export default function RequestDetailsTab() {
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [providers, setProviders] = useState([]);
+  const [apiKeys, setApiKeys] = useState([]);
   const [providerNameCache, setProviderNameCache] = useState(null);
   const [filters, setFilters] = useState({
     provider: "",
+    apiKeyId: "",
     startDate: "",
     endDate: ""
   });
@@ -120,6 +122,16 @@ export default function RequestDetailsTab() {
     }
   }, []);
 
+  const fetchApiKeys = useCallback(async () => {
+    try {
+      const res = await fetch("/api/keys");
+      const data = await res.json();
+      setApiKeys(data.keys || []);
+    } catch (error) {
+      console.error("Failed to fetch API keys:", error);
+    }
+  }, []);
+
   const fetchDetails = useCallback(async () => {
     setLoading(true);
     try {
@@ -128,6 +140,7 @@ export default function RequestDetailsTab() {
         pageSize: pagination.pageSize.toString()
       });
       if (filters.provider) params.append("provider", filters.provider);
+      if (filters.apiKeyId) params.append("apiKeyId", filters.apiKeyId);
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
 
@@ -145,7 +158,8 @@ export default function RequestDetailsTab() {
 
   useEffect(() => {
     fetchProviders();
-  }, [fetchProviders]);
+    fetchApiKeys();
+  }, [fetchProviders, fetchApiKeys]);
 
   useEffect(() => {
     fetchDetails();
@@ -165,13 +179,19 @@ export default function RequestDetailsTab() {
   };
 
   const handleClearFilters = () => {
-    setFilters({ provider: "", startDate: "", endDate: "" });
+    setFilters({ provider: "", apiKeyId: "", startDate: "", endDate: "" });
+  };
+
+  const apiKeyLabel = (id) => {
+    const key = apiKeys.find((k) => k.id === id);
+    if (!key) return id;
+    return key.name ? `${key.name} (${key.keyPrefix || "—"})` : (key.keyPrefix || id);
   };
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <Card padding="md">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="flex min-w-0 flex-col gap-2">
             <label htmlFor="provider-filter" className="text-sm font-medium text-text-main">Provider</label>
             <select
@@ -193,7 +213,29 @@ export default function RequestDetailsTab() {
               ))}
             </select>
           </div>
-          
+
+          <div className="flex min-w-0 flex-col gap-2">
+            <label htmlFor="api-key-filter" className="text-sm font-medium text-text-main">API Key</label>
+            <select
+              id="api-key-filter"
+              value={filters.apiKeyId}
+              onChange={(e) => setFilters({ ...filters, apiKeyId: e.target.value })}
+              className={cn(
+                "h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface",
+                "text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20",
+                "w-full min-w-0 cursor-pointer"
+              )}
+              style={{ colorScheme: 'auto' }}
+            >
+              <option value="">All Keys</option>
+              {apiKeys.map((key) => (
+                <option key={key.id} value={key.id}>
+                  {key.name ? `${key.name} (${key.keyPrefix || "—"})` : (key.keyPrefix || key.id)}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex min-w-0 flex-col gap-2">
             <label htmlFor="start-date-filter" className="text-sm font-medium text-text-main">Start Date</label>
             <input
@@ -224,10 +266,10 @@ export default function RequestDetailsTab() {
           
           <div className="flex min-w-0 flex-col gap-2 sm:col-span-2 lg:col-span-1">
             <span className="hidden text-sm font-medium text-text-main opacity-0 lg:block" aria-hidden="true">Clear</span>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               onClick={handleClearFilters}
-              disabled={!filters.provider && !filters.startDate && !filters.endDate}
+              disabled={!filters.provider && !filters.apiKeyId && !filters.startDate && !filters.endDate}
               className="w-full"
             >
               Clear Filters
@@ -244,6 +286,7 @@ export default function RequestDetailsTab() {
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Timestamp</th>
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Model</th>
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Provider</th>
+                <th className="text-left p-4 text-sm font-semibold text-text-main">API Key</th>
                 <th className="text-right p-4 text-sm font-semibold text-text-main">Input Tokens</th>
                 <th className="text-right p-4 text-sm font-semibold text-text-main">Output Tokens</th>
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Latency</th>
@@ -253,7 +296,7 @@ export default function RequestDetailsTab() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                  <td colSpan="8" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
                       <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
                       Loading...
@@ -262,7 +305,7 @@ export default function RequestDetailsTab() {
                 </tr>
               ) : details.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                  <td colSpan="8" className="p-8 text-center text-text-muted">
                     No request details found
                   </td>
                 </tr>
@@ -283,6 +326,23 @@ export default function RequestDetailsTab() {
                          {getProviderName(detail.provider, providerNameCache)}
                        </span>
                      </td>
+                    <td className="max-w-[180px] truncate p-4 text-sm text-text-main">
+                      {detail.apiKeyId ? (
+                        <button
+                          type="button"
+                          onClick={() => setFilters((prev) => ({ ...prev, apiKeyId: detail.apiKeyId }))}
+                          className="text-left hover:text-primary transition-colors"
+                          title="Filter by this key"
+                        >
+                          <span className="font-medium">{apiKeyLabel(detail.apiKeyId).split(" (")[0]}</span>
+                          {detail.apiKeyPrefix && (
+                            <span className="ml-1 font-mono text-xs text-text-muted">{detail.apiKeyPrefix}</span>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </td>
                     <td className="p-4 text-sm text-text-main text-right font-mono">
                       {getInputTokens(detail.tokens).toLocaleString()}
                     </td>
@@ -348,6 +408,16 @@ export default function RequestDetailsTab() {
               <div>
                 <span className="text-text-muted">Model:</span>{" "}
                 <span className="text-text-main font-mono">{selectedDetail.model}</span>
+              </div>
+              <div>
+                <span className="text-text-muted">API Key:</span>{" "}
+                {selectedDetail.apiKeyId ? (
+                  <span className="text-text-main">
+                    {apiKeyLabel(selectedDetail.apiKeyId)}
+                  </span>
+                ) : (
+                  <span className="text-text-muted">—</span>
+                )}
               </div>
               <div>
                 <span className="text-text-muted">Status:</span>{" "}

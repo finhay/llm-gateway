@@ -265,12 +265,16 @@ See [deployment guide](getting-started/installation.md#deployment) for details.
 **Best practices:**
 - Change `JWT_SECRET` in production
 - Use strong `INITIAL_PASSWORD`
+- Set `REQUIRE_API_KEY=true` for internet-exposed deployments
+- Set unique `API_KEY_SECRET`, `API_KEY_HASH_SECRET`, and `MACHINE_ID_SALT` values
 - Enable HTTPS for cloud deployments
-- Rotate API keys regularly
+- Use scoped gateway keys and rotate or revoke them regularly
+- Configure per-key rate limits and budgets for shared/team deployments
 
 **What 9Router stores:**
 - Provider OAuth tokens (encrypted)
-- API keys (encrypted)
+- Gateway API key hashes and safe prefixes; raw gateway keys are shown only once on create/rotation
+- Provider API keys/tokens needed for upstream calls
 - Usage statistics (local only)
 - Combo configurations
 

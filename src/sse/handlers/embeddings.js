@@ -2,8 +2,9 @@ import {
   getProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
+  authenticateApiKey,
+  API_KEY_SCOPES,
   extractApiKey,
-  isValidApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -41,18 +42,11 @@ export async function handleEmbeddings(request) {
     log.debug("AUTH", "No API key provided (local mode)");
   }
 
-  // Enforce API key if enabled in settings
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) {
-      log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
-      log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-    }
+  const auth = await authenticateApiKey(request, { settings, requiredScope: API_KEY_SCOPES.EMBEDDINGS_WRITE });
+  if (!auth.ok) {
+    log.warn("AUTH", auth.message);
+    return errorResponse(auth.status, auth.message);
   }
 
   if (!modelStr) {

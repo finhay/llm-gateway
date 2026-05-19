@@ -200,7 +200,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                 />
                 {apiKeys?.length > 0 && (
                   <datalist id="mitm-api-keys">
-                    {apiKeys.map((key) => (
+                    {apiKeys.filter((key) => key.key).map((key) => (
                       <option key={key.id} value={key.key}>{key.name || key.key}</option>
                     ))}
                   </datalist>

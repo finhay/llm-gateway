@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
+import { deleteApiKey, getApiKeyById, revokeApiKey, updateApiKey } from "@/lib/localDb";
 
-// GET /api/keys/[id] - Get single key
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
@@ -16,12 +15,10 @@ export async function GET(request, { params }) {
   }
 }
 
-// PUT /api/keys/[id] - Update key
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { isActive } = body;
 
     const existing = await getApiKeyById(id);
     if (!existing) {
@@ -29,10 +26,27 @@ export async function PUT(request, { params }) {
     }
 
     const updateData = {};
-    if (isActive !== undefined) updateData.isActive = isActive;
+    for (const field of [
+      "name",
+      "scopes",
+      "ownerType",
+      "ownerId",
+      "expiresAt",
+      "rateLimitRpm",
+      "rateLimitRpd",
+      "budgetLimitUsd",
+      "budgetPeriod",
+      "isActive",
+      "status",
+      "metadata",
+      "updatedBy",
+      "actorType",
+      "revokeReason",
+    ]) {
+      if (body[field] !== undefined) updateData[field] = body[field];
+    }
 
     const updated = await updateApiKey(id, updateData);
-
     return NextResponse.json({ key: updated });
   } catch (error) {
     console.log("Error updating key:", error);
@@ -40,19 +54,21 @@ export async function PUT(request, { params }) {
   }
 }
 
-// DELETE /api/keys/[id] - Delete API key
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const key = body.reason
+      ? await revokeApiKey(id, { type: body.actorType || null, id: body.actorId || null }, body.reason)
+      : ((await deleteApiKey(id)) ? await getApiKeyById(id) : null);
 
-    const deleted = await deleteApiKey(id);
-    if (!deleted) {
+    if (!key) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ message: "Key deleted successfully" });
+    return NextResponse.json({ message: "Key revoked successfully", key });
   } catch (error) {
-    console.log("Error deleting key:", error);
-    return NextResponse.json({ error: "Failed to delete key" }, { status: 500 });
+    console.log("Error revoking key:", error);
+    return NextResponse.json({ error: "Failed to revoke key" }, { status: 500 });
   }
 }

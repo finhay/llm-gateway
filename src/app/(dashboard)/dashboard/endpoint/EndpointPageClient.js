@@ -38,12 +38,91 @@ const CAVEMAN_LEVELS = [
   { id: "full", label: "Full", desc: "Drop articles, fragments OK" },
   { id: "ultra", label: "Ultra", desc: "Telegraphic, max compression" },
 ];
+
+const API_KEY_SCOPE_PRESETS = [
+  { id: "all", label: "All access", desc: "Every endpoint", scopes: ["*"] },
+  { id: "chat", label: "Chat", desc: "Chat completions", scopes: ["chat:write"] },
+  { id: "embeddings", label: "Embeddings", desc: "Vector embeddings", scopes: ["embeddings:write"] },
+  { id: "images", label: "Images", desc: "Image generation", scopes: ["images:write"] },
+  { id: "audio", label: "Audio", desc: "TTS and STT", scopes: ["tts:write", "stt:write"] },
+  { id: "search", label: "Search & Fetch", desc: "Web search and fetch", scopes: ["search:write", "fetch:write"] },
+  { id: "models", label: "Models metadata", desc: "List models and count tokens", scopes: ["models:read", "tokens:count"] },
+];
+
+const DEFAULT_NEW_KEY_PRESETS = ["chat", "models"];
+
+const EXPIRY_PRESETS = [
+  { id: "never", label: "No expiration", days: null },
+  { id: "30", label: "30 days", days: 30 },
+  { id: "60", label: "60 days", days: 60 },
+  { id: "90", label: "90 days", days: 90 },
+  { id: "custom", label: "Custom", days: null },
+];
+
+const DEFAULT_METADATA_ROWS = [
+  { key: "team", value: "" },
+  { key: "environment", value: "" },
+  { key: "purpose", value: "" },
+];
+
+function expandScopePresets(presetIds) {
+  if (presetIds.includes("all")) return ["*"];
+  const set = new Set();
+  for (const id of presetIds) {
+    const preset = API_KEY_SCOPE_PRESETS.find((p) => p.id === id);
+    if (preset) preset.scopes.forEach((s) => set.add(s));
+  }
+  return Array.from(set);
+}
+
+function formatExpiry(expiresAt) {
+  if (!expiresAt) return null;
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (Number.isNaN(ms)) return null;
+  if (ms <= 0) return { label: "Expired", expired: true };
+  const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
+  if (days >= 1) return { label: `Expires in ${days}d`, expired: false };
+  const hours = Math.ceil(ms / (60 * 60 * 1000));
+  return { label: `Expires in ${hours}h`, expired: false };
+}
+
+function formatRelativeTime(iso) {
+  if (!iso) return "Never";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "—";
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function summarizeScopes(scopes) {
+  if (!scopes || !scopes.length) return "No scopes";
+  if (scopes.includes("*")) return "All access";
+  if (scopes.length <= 2) return scopes.join(", ");
+  return `${scopes.length} scopes`;
+}
+
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScopePresets, setNewKeyScopePresets] = useState(DEFAULT_NEW_KEY_PRESETS);
+  const [newKeyExpiryPreset, setNewKeyExpiryPreset] = useState("never");
+  const [newKeyExpiresAtCustom, setNewKeyExpiresAtCustom] = useState("");
+  const [newKeyRateLimitRpm, setNewKeyRateLimitRpm] = useState("");
+  const [newKeyRateLimitRpd, setNewKeyRateLimitRpd] = useState("");
+  const [newKeyBudgetLimitUsd, setNewKeyBudgetLimitUsd] = useState("");
+  const [newKeyBudgetPeriod, setNewKeyBudgetPeriod] = useState("");
+  const [newKeyMetadataRows, setNewKeyMetadataRows] = useState(DEFAULT_METADATA_ROWS);
   const [createdKey, setCreatedKey] = useState(null);
+  const [detailsKey, setDetailsKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
@@ -638,6 +717,47 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  const resetNewKeyForm = () => {
+    setNewKeyName("");
+    setNewKeyScopePresets(DEFAULT_NEW_KEY_PRESETS);
+    setNewKeyExpiryPreset("never");
+    setNewKeyExpiresAtCustom("");
+    setNewKeyRateLimitRpm("");
+    setNewKeyRateLimitRpd("");
+    setNewKeyBudgetLimitUsd("");
+    setNewKeyBudgetPeriod("");
+    setNewKeyMetadataRows(DEFAULT_METADATA_ROWS);
+  };
+
+  const resolveExpiresAt = () => {
+    if (newKeyExpiryPreset === "never") return undefined;
+    if (newKeyExpiryPreset === "custom") {
+      return newKeyExpiresAtCustom ? new Date(newKeyExpiresAtCustom).toISOString() : undefined;
+    }
+    const preset = EXPIRY_PRESETS.find((p) => p.id === newKeyExpiryPreset);
+    if (!preset?.days) return undefined;
+    return new Date(Date.now() + preset.days * 24 * 60 * 60 * 1000).toISOString();
+  };
+
+  const buildNewKeyPayload = () => {
+    const metadata = newKeyMetadataRows.reduce((acc, row) => {
+      const key = row.key.trim();
+      if (key) acc[key] = row.value;
+      return acc;
+    }, {});
+
+    return {
+      name: newKeyName.trim(),
+      scopes: expandScopePresets(newKeyScopePresets),
+      expiresAt: resolveExpiresAt(),
+      rateLimitRpm: newKeyRateLimitRpm ? Number(newKeyRateLimitRpm) : undefined,
+      rateLimitRpd: newKeyRateLimitRpd ? Number(newKeyRateLimitRpd) : undefined,
+      budgetLimitUsd: newKeyBudgetLimitUsd ? Number(newKeyBudgetLimitUsd) : undefined,
+      budgetPeriod: newKeyBudgetPeriod || undefined,
+      metadata: Object.keys(metadata).length ? metadata : undefined,
+    };
+  };
+
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return;
 
@@ -645,19 +765,45 @@ export default function APIPageClient({ machineId }) {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName }),
+        body: JSON.stringify(buildNewKeyPayload()),
       });
       const data = await res.json();
 
       if (res.ok) {
-        setCreatedKey(data.key);
+        setCreatedKey(data.key.key);
         await fetchData();
-        setNewKeyName("");
+        resetNewKeyForm();
         setShowAddModal(false);
       }
     } catch (error) {
       console.log("Error creating key:", error);
     }
+  };
+
+  const toggleNewKeyScopePreset = (presetId) => {
+    setNewKeyScopePresets((prev) => {
+      if (presetId === "all") return prev.includes("all") ? [] : ["all"];
+      const withoutAll = prev.filter((item) => item !== "all");
+      if (withoutAll.includes(presetId)) return withoutAll.filter((item) => item !== presetId);
+      return [...withoutAll, presetId];
+    });
+  };
+
+  const updateNewKeyMetadataRow = (index, field, value) => {
+    setNewKeyMetadataRows((prev) => prev.map((row, i) => i === index ? { ...row, [field]: value } : row));
+  };
+
+  const addNewKeyMetadataRow = () => {
+    setNewKeyMetadataRows((prev) => [...prev, { key: "", value: "" }]);
+  };
+
+  const removeNewKeyMetadataRow = (index) => {
+    setNewKeyMetadataRows((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const closeAddKeyModal = () => {
+    setShowAddModal(false);
+    resetNewKeyForm();
   };
 
   const handleDeleteKey = async (id) => {
@@ -702,6 +848,8 @@ export default function APIPageClient({ machineId }) {
     if (!fullKey) return "";
     return fullKey.length > 8 ? fullKey.slice(0, 8) + "..." : fullKey;
   };
+
+  const displayKey = (key) => key.key || key.keyPrefix || "hidden";
 
   const toggleKeyVisibility = (keyId) => {
     setVisibleKeys(prev => {
@@ -1071,71 +1219,98 @@ export default function APIPageClient({ machineId }) {
           </div>
         ) : (
           <div className="flex flex-col">
-            {keys.map((key) => (
-              <div
-                key={key.id}
-                className={`group flex items-center justify-between py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{key.name}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs text-text-muted font-mono">
-                      {visibleKeys.has(key.id) ? key.key : maskKey(key.key)}
-                    </code>
-                    <button
-                      onClick={() => toggleKeyVisibility(key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">
-                        {visibleKeys.has(key.id) ? "visibility_off" : "visibility"}
+            {keys.map((key) => {
+              const expiry = formatExpiry(key.expiresAt);
+              return (
+                <div
+                  key={key.id}
+                  className={`group flex items-center justify-between py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium">{key.name}</p>
+                      {key.isActive === false && (
+                        <KeyChip color="orange" icon="pause_circle">Paused</KeyChip>
+                      )}
+                      {expiry && (
+                        <KeyChip color={expiry.expired ? "red" : "muted"} icon="schedule">
+                          {expiry.label}
+                        </KeyChip>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="text-xs text-text-muted font-mono">
+                        {maskKey(displayKey(key))}
+                      </code>
+                      {key.key && (
+                        <button
+                          onClick={() => copy(key.key, key.id)}
+                          className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            {copied === key.id ? "check" : "content_copy"}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <KeyChip icon="vpn_key">{summarizeScopes(key.scopes)}</KeyChip>
+                      {(key.rateLimitRpm || key.rateLimitRpd) && (
+                        <KeyChip icon="speed">
+                          {[
+                            key.rateLimitRpm && `${key.rateLimitRpm}/min`,
+                            key.rateLimitRpd && `${key.rateLimitRpd}/day`,
+                          ].filter(Boolean).join(" · ")}
+                        </KeyChip>
+                      )}
+                      {key.budgetLimitUsd && (
+                        <KeyChip icon="paid">
+                          ${Number(key.budgetSpentUsd || 0).toFixed(2)} / ${Number(key.budgetLimitUsd).toFixed(2)}
+                          {key.budgetPeriod && key.budgetPeriod !== "lifetime" ? ` ${key.budgetPeriod}` : ""}
+                        </KeyChip>
+                      )}
+                      <span className="text-xs text-text-muted">
+                        Last used {formatRelativeTime(key.lastUsedAt)}
                       </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setDetailsKey(key)}
+                      className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                      title="View details"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">info</span>
                     </button>
+                    <Toggle
+                      size="sm"
+                      checked={key.isActive ?? true}
+                      onChange={(checked) => {
+                        if (key.isActive && !checked) {
+                          setConfirmState({
+                            title: "Pause API Key",
+                            message: `Pause API key "${key.name}"?\n\nThis key will stop working immediately but can be resumed later.`,
+                            onConfirm: async () => {
+                              setConfirmState(null);
+                              handleToggleKey(key.id, checked);
+                            }
+                          });
+                        } else {
+                          handleToggleKey(key.id, checked);
+                        }
+                      }}
+                      title={key.isActive ? "Pause key" : "Resume key"}
+                    />
                     <button
-                      onClick={() => copy(key.key, key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                      onClick={() => handleDeleteKey(key.id)}
+                      className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                     >
-                      <span className="material-symbols-outlined text-[14px]">
-                        {copied === key.id ? "check" : "content_copy"}
-                      </span>
+                      <span className="material-symbols-outlined text-[18px]">delete</span>
                     </button>
                   </div>
-                  <p className="text-xs text-text-muted mt-1">
-                    Created {new Date(key.createdAt).toLocaleDateString()}
-                  </p>
-                  {key.isActive === false && (
-                    <p className="text-xs text-orange-500 mt-1">Paused</p>
-                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Toggle
-                    size="sm"
-                    checked={key.isActive ?? true}
-                    onChange={(checked) => {
-                      if (key.isActive && !checked) {
-                        setConfirmState({
-                          title: "Pause API Key",
-                          message: `Pause API key "${key.name}"?\n\nThis key will stop working immediately but can be resumed later.`,
-                          onConfirm: async () => {
-                            setConfirmState(null);
-                            handleToggleKey(key.id, checked);
-                          }
-                        });
-                      } else {
-                        handleToggleKey(key.id, checked);
-                      }
-                    }}
-                    title={key.isActive ? "Pause key" : "Resume key"}
-                  />
-                  <button
-                    onClick={() => handleDeleteKey(key.id)}
-                    className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
@@ -1144,30 +1319,166 @@ export default function APIPageClient({ machineId }) {
       <Modal
         isOpen={showAddModal}
         title="Create API Key"
-        onClose={() => {
-          setShowAddModal(false);
-          setNewKeyName("");
-        }}
+        size="lg"
+        onClose={closeAddKeyModal}
       >
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           <Input
             label="Key Name"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Production Key"
           />
-          <div className="flex gap-2">
-            <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Permissions</p>
+            <div className="grid grid-cols-2 gap-2">
+              {API_KEY_SCOPE_PRESETS.map((preset) => {
+                const checked = newKeyScopePresets.includes(preset.id);
+                return (
+                  <label
+                    key={preset.id}
+                    className={`flex items-start gap-2 rounded-lg border p-2 text-sm cursor-pointer ${
+                      checked ? "border-primary bg-primary/5" : "border-border"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleNewKeyScopePreset(preset.id)}
+                      className="accent-primary mt-0.5"
+                    />
+                    <span className="flex flex-col">
+                      <span className="font-medium">{preset.label}</span>
+                      <span className="text-xs text-text-muted">{preset.desc}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Expiration</p>
+            <div className="flex flex-wrap gap-2">
+              {EXPIRY_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setNewKeyExpiryPreset(preset.id)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                    newKeyExpiryPreset === preset.id
+                      ? "border-primary bg-primary text-white"
+                      : "border-border text-text-muted hover:bg-surface-2"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            {newKeyExpiryPreset === "custom" && (
+              <Input
+                type="datetime-local"
+                value={newKeyExpiresAtCustom}
+                onChange={(e) => setNewKeyExpiresAtCustom(e.target.value)}
+              />
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Rate Limits</p>
+              <p className="text-xs text-text-muted">Leave empty for unlimited</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Per minute"
+                type="number"
+                min="1"
+                value={newKeyRateLimitRpm}
+                onChange={(e) => setNewKeyRateLimitRpm(e.target.value)}
+                placeholder="Unlimited"
+              />
+              <Input
+                label="Per day"
+                type="number"
+                min="1"
+                value={newKeyRateLimitRpd}
+                onChange={(e) => setNewKeyRateLimitRpd(e.target.value)}
+                placeholder="Unlimited"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Budget</p>
+              <p className="text-xs text-text-muted">Leave empty for unlimited</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Limit (USD)"
+                type="number"
+                min="0"
+                step="0.01"
+                value={newKeyBudgetLimitUsd}
+                onChange={(e) => setNewKeyBudgetLimitUsd(e.target.value)}
+                placeholder="Unlimited"
+              />
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Period</span>
+                <select
+                  value={newKeyBudgetPeriod}
+                  onChange={(e) => setNewKeyBudgetPeriod(e.target.value)}
+                  className="h-10 rounded-lg border border-border bg-input px-3 text-sm outline-none focus:border-primary"
+                  disabled={!newKeyBudgetLimitUsd}
+                >
+                  <option value="">None</option>
+                  <option value="lifetime">Lifetime</option>
+                  <option value="daily">Daily</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Metadata <span className="font-normal normal-case tracking-normal">(optional tags)</span></p>
+              <Button size="sm" variant="ghost" onClick={addNewKeyMetadataRow}>Add Row</Button>
+            </div>
+            {newKeyMetadataRows.map((row, index) => (
+              <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                <Input
+                  value={row.key}
+                  onChange={(e) => updateNewKeyMetadataRow(index, "key", e.target.value)}
+                  placeholder="key"
+                />
+                <Input
+                  value={row.value}
+                  onChange={(e) => updateNewKeyMetadataRow(index, "value", e.target.value)}
+                  placeholder="value"
+                />
+                <button
+                  onClick={() => removeNewKeyMetadataRow(index)}
+                  className="p-2 hover:bg-red-500/10 rounded text-red-500 disabled:opacity-40"
+                  disabled={newKeyMetadataRows.length === 1}
+                >
+                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button
+              onClick={handleCreateKey}
+              fullWidth
+              disabled={!newKeyName.trim() || newKeyScopePresets.length === 0}
+            >
               Create
             </Button>
-            <Button
-              onClick={() => {
-                setShowAddModal(false);
-                setNewKeyName("");
-              }}
-              variant="ghost"
-              fullWidth
-            >
+            <Button onClick={closeAddKeyModal} variant="ghost" fullWidth>
               Cancel
             </Button>
           </div>
@@ -1207,6 +1518,111 @@ export default function APIPageClient({ machineId }) {
             Done
           </Button>
         </div>
+      </Modal>
+
+      {/* Key Details Modal */}
+      <Modal
+        isOpen={!!detailsKey}
+        title={detailsKey?.name ? `${detailsKey.name} — Details` : "API Key Details"}
+        size="lg"
+        onClose={() => setDetailsKey(null)}
+      >
+        {detailsKey && (
+          <div className="flex flex-col gap-5">
+            <DetailRow label="Status">
+              <span className={`text-sm font-medium ${
+                detailsKey.status === "active" && detailsKey.isActive !== false
+                  ? "text-green-600 dark:text-green-400"
+                  : detailsKey.status === "revoked"
+                  ? "text-red-500"
+                  : "text-orange-500"
+              }`}>
+                {detailsKey.status === "revoked"
+                  ? "Revoked"
+                  : detailsKey.isActive === false
+                  ? "Paused"
+                  : "Active"}
+              </span>
+            </DetailRow>
+            <DetailRow label="Key prefix">
+              <code className="text-sm font-mono">{detailsKey.keyPrefix || "—"}</code>
+            </DetailRow>
+            <DetailRow label="Scopes">
+              <div className="flex flex-wrap gap-1.5">
+                {(detailsKey.scopes || []).map((scope) => (
+                  <KeyChip key={scope} icon="vpn_key">{scope}</KeyChip>
+                ))}
+                {!detailsKey.scopes?.length && <span className="text-sm text-text-muted">None</span>}
+              </div>
+            </DetailRow>
+            {(detailsKey.ownerType || detailsKey.ownerId) && (
+              <DetailRow label="Owner">
+                <span className="text-sm">
+                  {detailsKey.ownerType || "—"}
+                  {detailsKey.ownerId ? ` / ${detailsKey.ownerId}` : ""}
+                </span>
+              </DetailRow>
+            )}
+            <DetailRow label="Expiration">
+              <span className="text-sm">
+                {detailsKey.expiresAt
+                  ? `${new Date(detailsKey.expiresAt).toLocaleString()} (${formatExpiry(detailsKey.expiresAt)?.label || "—"})`
+                  : "No expiration"}
+              </span>
+            </DetailRow>
+            <DetailRow label="Rate limits">
+              <span className="text-sm">
+                {detailsKey.rateLimitRpm || detailsKey.rateLimitRpd
+                  ? [
+                      detailsKey.rateLimitRpm && `${detailsKey.rateLimitRpm}/min`,
+                      detailsKey.rateLimitRpd && `${detailsKey.rateLimitRpd}/day`,
+                    ].filter(Boolean).join(" · ")
+                  : "Unlimited"}
+              </span>
+            </DetailRow>
+            <DetailRow label="Budget">
+              <span className="text-sm">
+                {detailsKey.budgetLimitUsd
+                  ? `$${Number(detailsKey.budgetSpentUsd || 0).toFixed(2)} / $${Number(detailsKey.budgetLimitUsd).toFixed(2)}${
+                      detailsKey.budgetPeriod ? ` · ${detailsKey.budgetPeriod}` : ""
+                    }`
+                  : "Unlimited"}
+              </span>
+            </DetailRow>
+            <DetailRow label="Last used">
+              <span className="text-sm">{formatRelativeTime(detailsKey.lastUsedAt)}</span>
+            </DetailRow>
+            <DetailRow label="Created">
+              <span className="text-sm">{new Date(detailsKey.createdAt).toLocaleString()}</span>
+            </DetailRow>
+            {detailsKey.lastRotatedAt && (
+              <DetailRow label="Last rotated">
+                <span className="text-sm">{new Date(detailsKey.lastRotatedAt).toLocaleString()}</span>
+              </DetailRow>
+            )}
+            {detailsKey.revokedAt && (
+              <DetailRow label="Revoked">
+                <span className="text-sm text-red-500">
+                  {new Date(detailsKey.revokedAt).toLocaleString()}
+                  {detailsKey.revokeReason ? ` — ${detailsKey.revokeReason}` : ""}
+                </span>
+              </DetailRow>
+            )}
+            {detailsKey.metadata && Object.keys(detailsKey.metadata).length > 0 && (
+              <DetailRow label="Metadata">
+                <div className="flex flex-col gap-1 w-full">
+                  {Object.entries(detailsKey.metadata).map(([k, v]) => (
+                    <div key={k} className="flex items-center gap-2 text-sm">
+                      <code className="text-xs font-mono text-text-muted">{k}</code>
+                      <span className="text-text-muted">=</span>
+                      <span>{String(v) || <em className="text-text-muted">empty</em>}</span>
+                    </div>
+                  ))}
+                </div>
+              </DetailRow>
+            )}
+          </div>
+        )}
       </Modal>
 
       {/* Enable Tunnel Modal */}
@@ -1440,6 +1856,30 @@ function SecurityWarning({ message, action }) {
           {action.label}
         </a>
       )}
+    </div>
+  );
+}
+
+function KeyChip({ icon, color = "muted", children }) {
+  const colors = {
+    muted: "bg-surface-2 text-text-muted border-border",
+    orange: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
+    red: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+    green: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20",
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs ${colors[color] || colors.muted}`}>
+      {icon && <span className="material-symbols-outlined text-[12px]">{icon}</span>}
+      {children}
+    </span>
+  );
+}
+
+function DetailRow({ label, children }) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] gap-3 items-start">
+      <span className="text-xs text-text-muted uppercase tracking-wide pt-0.5">{label}</span>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

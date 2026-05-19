@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
@@ -41,6 +42,13 @@ function addToCounter(target, key, values) {
   if (values.meta) Object.assign(target[key], values.meta);
 }
 
+function safeApiKeyDisplay(entry) {
+  if (entry.apiKeyPrefix) return entry.apiKeyPrefix;
+  if (entry.apiKeyId) return entry.apiKeyId;
+  if (!entry.apiKey || typeof entry.apiKey !== "string") return "local-no-key";
+  return crypto.createHash("sha256").update(entry.apiKey).digest("hex").slice(0, 12);
+}
+
 function aggregateEntryToDay(day, entry) {
   const promptTokens = entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
   const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
@@ -67,9 +75,9 @@ function aggregateEntryToDay(day, entry) {
     addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
   }
 
-  const apiKeyVal = entry.apiKey && typeof entry.apiKey === "string" ? entry.apiKey : "local-no-key";
+  const apiKeyVal = safeApiKeyDisplay(entry);
   const akModelKey = `${apiKeyVal}|${entry.model}|${entry.provider || "unknown"}`;
-  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: entry.apiKey || null } });
+  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: apiKeyVal === "local-no-key" ? null : apiKeyVal, apiKeyId: entry.apiKeyId || null } });
 
   const endpoint = entry.endpoint || "Unknown";
   const epKey = `${endpoint}|${entry.model}|${entry.provider || "unknown"}`;
@@ -245,6 +253,8 @@ export async function saveRequestUsage(entry) {
     const db = await getAdapter();
 
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
+    entry.apiKeyId = entry.apiKeyRecord?.id || entry.apiKeyId || null;
+    entry.apiKeyPrefix = entry.apiKeyRecord?.keyPrefix || entry.apiKeyPrefix || safeApiKeyDisplay(entry);
     entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
 
     const tokens = entry.tokens || {};
@@ -255,10 +265,10 @@ export async function saveRequestUsage(entry) {
     // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
     db.transaction(() => {
       db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, apiKeyId, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           entry.timestamp, entry.provider || null, entry.model || null,
-          entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
+          entry.connectionId || null, entry.apiKeyPrefix === "local-no-key" ? null : entry.apiKeyPrefix, entry.apiKeyId || null, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
           stringifyJson(tokens), stringifyJson({}),
         ]
@@ -277,6 +287,21 @@ export async function saveRequestUsage(entry) {
       const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
       const next = (cur ? parseInt(cur.value, 10) : 0) + 1;
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
+
+      if (entry.apiKeyId) {
+        db.run(`UPDATE apiKeys SET budgetSpentUsd = COALESCE(budgetSpentUsd, 0) + ? WHERE id = ?`, [entry.cost || 0, entry.apiKeyId]);
+        db.run(
+          `INSERT INTO apiKeyUsageEvents(id, timestamp, apiKeyId, keyPrefix, route, method, provider, model, scopeUsed, inputTokens, outputTokens, costUsd, statusCode, errorCode, requestId, metadata)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            crypto.randomUUID(), entry.timestamp, entry.apiKeyId, entry.apiKeyPrefix || null,
+            entry.endpoint || null, entry.method || null, entry.provider || null, entry.model || null,
+            entry.scopeUsed || null, promptTokens, completionTokens, entry.cost || 0,
+            entry.statusCode || null, entry.errorCode || null, entry.requestId || null,
+            stringifyJson(entry.metadata || {}),
+          ]
+        );
+      }
     });
 
     pushToRing(entry);

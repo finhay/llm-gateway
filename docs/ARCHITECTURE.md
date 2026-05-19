@@ -164,22 +164,27 @@ Main flow modules:
 Primary state DB:
 
 - `src/lib/localDb.js`
-- file: `${DATA_DIR}/db.json` (or `~/.9router/db.json` when `DATA_DIR` is unset)
-- entities: providerConnections, providerNodes, modelAliases, combos, apiKeys, settings, pricing
+- file: `${DATA_DIR}/db/data.sqlite` (or `~/.9router/db/data.sqlite` when `DATA_DIR` is unset)
+- entities: providerConnections, providerNodes, modelAliases, combos, apiKeys, settings, pricing, usage history, request details, and audit events
 
-Usage DB:
+Usage and audit data:
 
-- `src/lib/usageDb.js`
-- files: `~/.9router/usage.json`, `~/.9router/log.txt`
-- note: currently independent from `DATA_DIR`
+- `src/lib/usageDb.js` and `src/lib/db/repos/usageRepo.js`
+- usage is stored in SQLite tables `usageHistory` and `usageDaily`
+- per-request observability rows in `requestDetails` carry `apiKeyId` and `apiKeyPrefix` so the dashboard Details tab can filter by gateway key
+- API key usage/admin audit trails are stored in `apiKeyUsageEvents` and `apiKeyAdminEvents`
 
 ## 4) Auth + Security Surfaces
 
 - Admin dashboard cookie auth: `src/proxy.js`, `src/app/api/auth/login/route.js`
-- Gateway API key generation/verification: `src/shared/utils/apiKey.js`
-- Runtime identity should resolve from gateway API key metadata rather than dashboard sessions
-- Team-member dashboard login is not required for the internal gateway MVP
-- Provider secrets persisted in `providerConnections` entries
+- Gateway API key generation: `src/shared/utils/apiKey.js`
+- Gateway API key storage/validation/lifecycle: `src/lib/db/repos/apiKeysRepo.js`
+- API keys are one-time reveal credentials: the raw secret is returned only on create/rotate, while SQLite stores a keyed hash plus a display prefix.
+- Runtime identity resolves from gateway API key metadata rather than dashboard sessions: owner metadata, scopes, status, expiry, rate limits, and budgets.
+- Scoped keys are enforced through `src/sse/services/auth.js` before provider execution. Initial scopes include `chat:write`, `embeddings:write`, `models:read`, `tokens:count`, `cloud:sync`, `keys:read`, `keys:write`, `admin:*`, and `*`.
+- Key revocation is soft/delete-as-revoke so usage and admin audit history remain attributable.
+- Team-member dashboard login is not required for the internal gateway MVP.
+- Provider secrets persisted in `providerConnections` entries.
 - Optional proxy support for upstream calls via env proxy variables (`open-sse/utils/proxyFetch.js`)
 
 ## 5) Cloud Sync
@@ -394,9 +399,21 @@ erDiagram
     API_KEY {
       string id
       string name
-      string key
+      string keyHash
+      string keyPrefix
       string machineId
-      boolean isActive
+      string ownerType
+      string ownerId
+      string[] scopes
+      string status
+      string expiresAt
+      string lastUsedAt
+      string revokedAt
+      number rateLimitRpm
+      number rateLimitRpd
+      number budgetLimitUsd
+      string budgetPeriod
+      number budgetSpentUsd
     }
 
     USAGE_ENTRY {
@@ -411,8 +428,8 @@ erDiagram
 
 Physical storage files:
 
-- main state: `${DATA_DIR}/db.json` (or `~/.9router/db.json`)
-- usage stats: `~/.9router/usage.json`
+- main state, usage, and audit data: `${DATA_DIR}/db/data.sqlite` (or `~/.9router/db/data.sqlite`)
+- backups: `${DATA_DIR}/db/backups/`
 - request log lines: `~/.9router/log.txt`
 - optional translator/request debug sessions: `<repo>/logs/...`
 
@@ -428,8 +445,8 @@ flowchart LR
     subgraph ContainerOrProcess[9Router Runtime]
         Next[Next.js Server\nPORT=20128]
         Core[SSE Core + Executors]
-        MainDB[(db.json)]
-        UsageDB[(usage.json/log.txt)]
+        MainDB[(SQLite data.sqlite)]
+        UsageDB[(usage + audit tables)]
     end
 
     subgraph External[External Services]
@@ -549,8 +566,8 @@ Translations are selected dynamically based on source payload shape and provider
 Runtime visibility sources:
 
 - console logs from `src/sse/utils/logger.js`
-- per-request usage aggregates in `usage.json`
-- textual request status log in `log.txt`
+- per-request usage aggregates in SQLite `usageHistory` / `usageDaily`
+- API key usage and admin audit events in SQLite `apiKeyUsageEvents` / `apiKeyAdminEvents`
 - optional deep request/translation logs under `logs/` when `ENABLE_REQUEST_LOGS=true`
 - dashboard usage endpoints (`/api/usage/*`) for UI consumption
 
@@ -558,19 +575,23 @@ Runtime visibility sources:
 
 - JWT secret (`JWT_SECRET`) secures dashboard session cookie verification/signing
 - Initial password fallback (`INITIAL_PASSWORD`, default `123456`) must be overridden in real deployments
-- API key HMAC secret (`API_KEY_SECRET`) secures generated local API key format
+- API key HMAC secret (`API_KEY_SECRET`) secures generated local API key format and hashed-at-rest API key lookup
+- `MACHINE_ID_SALT` salts the stable machine identifier embedded in generated gateway key format
+- `REQUIRE_API_KEY=true` enforces scoped gateway API keys on `/v1/*`, `/v1beta/*`, token counting, models, and cloud sync routes
+- `AUTH_COOKIE_SECURE=true` should be used behind HTTPS reverse proxies
 - Provider secrets (API keys/tokens) are persisted in local DB and should be protected at filesystem level
-- Cloud sync endpoints rely on API key auth + machine id semantics
+- Cloud sync endpoints require valid gateway API keys with `cloud:sync` or wildcard scope
 
 ## Environment and Runtime Matrix
 
 Environment variables actively used by code:
 
-- App/auth: `JWT_SECRET`, `INITIAL_PASSWORD`
+- App/auth: `JWT_SECRET`, `INITIAL_PASSWORD`, `AUTH_COOKIE_SECURE`
 - Storage: `DATA_DIR`
-- Security hashing: `API_KEY_SECRET`, `MACHINE_ID_SALT`
+- Security hashing: `API_KEY_SECRET`, `API_KEY_HASH_SECRET`, `MACHINE_ID_SALT`
+- Gateway API auth: `REQUIRE_API_KEY`
 - Logging: `ENABLE_REQUEST_LOGS`
-- Sync/cloud URLing: `NEXT_PUBLIC_BASE_URL`, `NEXT_PUBLIC_CLOUD_URL`
+- Sync/cloud URLing: `BASE_URL`, `CLOUD_URL`, `NEXT_PUBLIC_BASE_URL`, `NEXT_PUBLIC_CLOUD_URL`
 - Outbound proxy: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` and lowercase variants
 - Platform/runtime helpers (not app-specific config): `APPDATA`, `NODE_ENV`, `PORT`, `HOSTNAME`
 
