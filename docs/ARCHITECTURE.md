@@ -1,10 +1,10 @@
-# 9Router Architecture
+# LLM Gateway Architecture
 
 _Last updated: 2026-05-19_
 
 ## Executive Summary
 
-9Router is a local AI routing gateway and dashboard built on Next.js.
+LLM Gateway is a local AI routing gateway and dashboard built on Next.js.
 It provides a single OpenAI-compatible endpoint (`/v1/*`) and routes traffic across multiple upstream providers with translation, fallback, token refresh, and usage tracking.
 
 For an internal team AI Gateway, the target architecture separates the data plane from an admin-only control plane. Developers and automation call the `/v1/*` API with IT-provisioned gateway API keys; they do not log in to the dashboard. IT/Platform/Security administrators use the dashboard to manage provider credentials, scoped API keys, policies, budgets, and audit workflows.
@@ -46,7 +46,7 @@ Primary runtime model:
 
 ## Internal AI Gateway Target Model
 
-When deployed for a team or company, 9Router should be treated as two planes:
+When deployed for a team or company, LLM Gateway should be treated as two planes:
 
 - **Data plane:** OpenAI/Anthropic-compatible API routes used by Claude Code, Cursor, Codex, CI jobs, and internal bots. Runtime identity comes from scoped gateway API keys.
 - **Control plane:** Admin-only dashboard and management APIs used by IT/Platform/Security to configure providers, issue/revoke keys, assign ownership metadata, enforce policies, manage budgets, and review audit/usage data.
@@ -69,7 +69,7 @@ flowchart LR
         BROWSER[Admin Browser Dashboard]
     end
 
-    subgraph Router[9Router Gateway Process]
+    subgraph Router[LLM Gateway Gateway Process]
         API[V1 Compatibility API\n/v1/*]
         KEYAUTH[Gateway API Key Auth\nidentity metadata]
         POLICY[Policy / Budget / DLP Layer]
@@ -164,7 +164,7 @@ Main flow modules:
 Primary state DB:
 
 - `src/lib/localDb.js`
-- file: `${DATA_DIR}/db/data.sqlite` (or `~/.9router/db/data.sqlite` when `DATA_DIR` is unset)
+- file: `${DATA_DIR}/db/data.sqlite` (or `~/.llm-gateway/db/data.sqlite` when `DATA_DIR` is unset)
 - entities: providerConnections, providerNodes, modelAliases, combos, apiKeys, settings, pricing, usage history, request details, and audit events
 
 Usage and audit data:
@@ -429,9 +429,9 @@ erDiagram
 
 Physical storage files:
 
-- main state, usage, and audit data: `${DATA_DIR}/db/data.sqlite` (or `~/.9router/db/data.sqlite`)
+- main state, usage, and audit data: `${DATA_DIR}/db/data.sqlite` (or `~/.llm-gateway/db/data.sqlite`)
 - backups: `${DATA_DIR}/db/backups/`
-- request log lines: `~/.9router/log.txt`
+- request log lines: `~/.llm-gateway/log.txt`
 - optional translator/request debug sessions: `<repo>/logs/...`
 
 ## Deployment Topology
@@ -443,7 +443,7 @@ flowchart LR
         Browser[Dashboard Browser]
     end
 
-    subgraph ContainerOrProcess[9Router Runtime]
+    subgraph ContainerOrProcess[LLM Gateway Runtime]
         Next[Next.js Server\nPORT=20128]
         Core[SSE Core + Executors]
         MainDB[(SQLite data.sqlite)]
@@ -598,15 +598,15 @@ Environment variables actively used by code:
 
 ## Known Architectural Notes
 
-1. `usageDb` currently stores under `~/.9router` and does not follow `DATA_DIR`.
+1. `usageDb` currently stores under `~/.llm-gateway` and does not follow `DATA_DIR`.
 2. `/api/v1/route.js` returns a static model list and is not the main models source used by `/v1/models`.
 3. Request logger writes full headers/body when enabled; treat log directory as sensitive.
 4. Cloud behavior depends on correct `NEXT_PUBLIC_BASE_URL` and cloud endpoint reachability.
 
 ## Operational Verification Checklist
 
-- Build from source: `cd /root/dev/9router && npm run build`
-- Build Docker image: `cd /root/dev/9router && docker build -t 9router .`
+- Build from source: `cd /root/dev/llm-gateway && npm run build`
+- Build Docker image: `cd /root/dev/llm-gateway && docker build -t llm-gateway .`
 - Start service and verify:
 - `GET /api/settings`
 - `GET /api/v1/models`

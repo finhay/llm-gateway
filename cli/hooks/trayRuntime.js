@@ -23,8 +23,8 @@ function hasSystray() {
 // On Windows it was an AV false-positive risk; on macOS/Linux its bundled
 // binary is broken on modern OS versions.
 function cleanupLegacySystray({ silent = false } = {}) {
-  // 1) Runtime dir: ~/.9router/runtime/node_modules/systray (or %APPDATA% on Win)
-  // 2) npm global nested: <npm_prefix>/node_modules/9router/node_modules/systray
+  // 1) Runtime dir: ~/.llm-gateway/runtime/node_modules/systray (or %APPDATA% on Win)
+  // 2) npm global nested: <npm_prefix>/node_modules/llm-gateway/node_modules/systray
   //    __dirname here = <pkg root>/hooks → up 1 = pkg root
   const targets = [
     path.join(getRuntimeNodeModules(), LEGACY_SYSTRAY_PKG),
@@ -34,9 +34,9 @@ function cleanupLegacySystray({ silent = false } = {}) {
     if (fs.existsSync(dir)) {
       try {
         fs.rmSync(dir, { recursive: true, force: true });
-        if (!silent) console.log(`[9router][runtime] removed legacy systray: ${dir}`);
+        if (!silent) console.log(`[llm-gateway][runtime] removed legacy systray: ${dir}`);
       } catch (e) {
-        if (!silent) console.warn(`[9router][runtime] failed to remove ${dir}: ${e.message}`);
+        if (!silent) console.warn(`[llm-gateway][runtime] failed to remove ${dir}: ${e.message}`);
       }
     }
   }
@@ -53,7 +53,7 @@ function chmodSystrayBin({ silent = false } = {}) {
   try {
     fs.chmodSync(binPath, 0o755);
   } catch (e) {
-    if (!silent) console.warn(`[9router][runtime] chmod tray bin failed: ${e.message}`);
+    if (!silent) console.warn(`[llm-gateway][runtime] chmod tray bin failed: ${e.message}`);
   }
 }
 
@@ -63,7 +63,7 @@ function ensureRuntimeDir() {
   const pkgPath = path.join(dir, "package.json");
   if (!fs.existsSync(pkgPath)) {
     fs.writeFileSync(pkgPath, JSON.stringify({
-      name: "9router-runtime",
+      name: "llm-gateway-runtime",
       version: "1.0.0",
       private: true
     }, null, 2));
@@ -75,7 +75,7 @@ function npmInstall(pkgs, { silent = false } = {}) {
   const cwd = ensureRuntimeDir();
   const args = ["install", ...pkgs, "--no-audit", "--no-fund", "--no-save", "--prefer-online"];
   const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  if (!silent) console.log(`[9router][runtime] ${npmCmd} ${args.join(" ")}  (cwd: ${cwd})`);
+  if (!silent) console.log(`[llm-gateway][runtime] ${npmCmd} ${args.join(" ")}  (cwd: ${cwd})`);
   const res = spawnSync(npmCmd, args, {
     cwd,
     stdio: silent ? "ignore" : "inherit",
@@ -97,13 +97,13 @@ function ensureTrayRuntime({ silent = false } = {}) {
   }
   if (hasSystray()) {
     chmodSystrayBin({ silent });
-    if (!silent) console.log("[9router][runtime] systray2 OK");
+    if (!silent) console.log("[llm-gateway][runtime] systray2 OK");
     return { systray: true };
   }
   const ok = npmInstall([`${SYSTRAY_PKG}@${SYSTRAY_VERSION}`], { silent });
   if (ok) chmodSystrayBin({ silent });
   if (!ok && !silent) {
-    console.warn("[9router][runtime] systray2 install failed (tray will be disabled)");
+    console.warn("[llm-gateway][runtime] systray2 install failed (tray will be disabled)");
   }
   return { systray: ok && hasSystray() };
 }

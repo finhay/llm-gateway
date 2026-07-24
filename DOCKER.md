@@ -1,6 +1,6 @@
 # Docker
 
-Run 9Router in a container. Published image: [`decolua/9router`](https://hub.docker.com/r/decolua/9router) — multi-platform `linux/amd64` + `linux/arm64`.
+Run LLM Gateway in a container. Published image: [`decolua/9router`](https://hub.docker.com/r/decolua/9router) — multi-platform `linux/amd64` + `linux/arm64`.
 
 ---
 
@@ -11,9 +11,9 @@ Run 9Router in a container. Published image: [`decolua/9router`](https://hub.doc
 ```bash
 docker run -d \
   -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
+  -v "$HOME/.llm-gateway:/app/data" \
   -e DATA_DIR=/app/data \
-  --name 9router \
+  --name llm-gateway \
   decolua/9router:latest
 ```
 
@@ -22,20 +22,20 @@ App listens on port `20128`. Open: http://localhost:20128
 ## Manage container
 
 ```bash
-docker logs -f 9router        # view logs
-docker stop 9router           # stop
-docker start 9router          # start again
-docker rm -f 9router          # remove
+docker logs -f llm-gateway        # view logs
+docker stop llm-gateway           # stop
+docker start llm-gateway          # start again
+docker rm -f llm-gateway          # remove
 ```
 
 ## Data persistence
 
 ```bash
--v "$HOME/.9router:/app/data" \
+-v "$HOME/.llm-gateway:/app/data" \
 -e DATA_DIR=/app/data
 ```
 
-Without `DATA_DIR`, the app falls back to `~/.9router/` (macOS/Linux) or `%APPDATA%\9router\` (Windows). In the container, `DATA_DIR=/app/data` makes the bind mount work.
+Without `DATA_DIR`, the app falls back to `~/.llm-gateway/` (macOS/Linux) or `%APPDATA%\llm-gateway\` (Windows). In the container, `DATA_DIR=/app/data` makes the bind mount work.
 
 Data layout under `$DATA_DIR/`:
 
@@ -47,7 +47,7 @@ $DATA_DIR/
 └── ...                   # certs, logs, runtime configs
 ```
 
-Host path: `$HOME/.9router/db/data.sqlite`
+Host path: `$HOME/.llm-gateway/db/data.sqlite`
 Container path: `/app/data/db/data.sqlite`
 
 ## Optional env vars
@@ -55,12 +55,12 @@ Container path: `/app/data/db/data.sqlite`
 ```bash
 docker run -d \
   -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
+  -v "$HOME/.llm-gateway:/app/data" \
   -e DATA_DIR=/app/data \
   -e PORT=20128 \
   -e HOSTNAME=0.0.0.0 \
   -e DEBUG=true \
-  --name 9router \
+  --name llm-gateway \
   decolua/9router:latest
 ```
 
@@ -68,7 +68,7 @@ docker run -d \
 
 ```bash
 docker pull decolua/9router:latest
-docker rm -f 9router
+docker rm -f llm-gateway
 # re-run the quick start command
 ```
 
@@ -79,12 +79,12 @@ docker rm -f 9router
 ## Build image locally (test)
 
 ```bash
-cd app && docker build -t 9router .
+cd app && docker build -t llm-gateway .
 
 docker run --rm -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
+  -v "$HOME/.llm-gateway:/app/data" \
   -e DATA_DIR=/app/data \
-  9router
+  llm-gateway
 ```
 
 ## Publish (automatic via CI)

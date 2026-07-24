@@ -1,12 +1,12 @@
 # Câu hỏi thường gặp
 
-Những câu hỏi phổ biến về 9Router.
+Những câu hỏi phổ biến về LLM Gateway.
 
 ---
 
-## 9Router là gì?
+## LLM Gateway là gì?
 
-**9Router là bộ định tuyến mô hình AI giúp tối đa hóa giá trị subscription và giảm chi phí.**
+**LLM Gateway là bộ định tuyến mô hình AI giúp tối đa hóa giá trị subscription và giảm chi phí.**
 
 Nó định tuyến request thông minh qua nhiều provider AI bằng hệ thống fallback 3 tầng:
 1. **Tầng Subscription** - Tối đa quota Claude Code, Codex, Gemini bạn đang trả tiền
@@ -23,7 +23,7 @@ Nó định tuyến request thông minh qua nhiều provider AI bằng hệ th�
 
 ## Pricing hoạt động thế nào?
 
-**9Router dùng chiến lược pricing 3 tầng:**
+**LLM Gateway dùng chiến lược pricing 3 tầng:**
 
 ### Tier 1: Subscription (Dùng đầu tiên)
 - **Claude Code** (Pro/Max): $20-100/tháng - Quota 5 giờ + hàng tuần
@@ -50,9 +50,9 @@ Nó định tuyến request thông minh qua nhiều provider AI bằng hệ th�
 
 ---
 
-## 9Router có miễn phí không?
+## LLM Gateway có miễn phí không?
 
-**Có, 9Router hoàn toàn miễn phí và mã nguồn mở 100%.**
+**Có, LLM Gateway hoàn toàn miễn phí và mã nguồn mở 100%.**
 
 **Provider free tier có sẵn:**
 - **Gemini CLI** - 180K completions/tháng (MIỄN PHÍ tài khoản Google)
@@ -96,7 +96,7 @@ Xem [tài liệu providers](providers/subscription.md) để biết chi tiết.
 
 ## Tôi có thể dùng nhiều provider không?
 
-**Có! Đây là tính năng cốt lõi của 9Router.**
+**Có! Đây là tính năng cốt lõi của LLM Gateway.**
 
 **Combo cho phép bạn nối nhiều provider với fallback tự động:**
 
@@ -129,7 +129,7 @@ Xem [tài liệu combos](features/combos.md) để biết ví dụ.
 
 ## Quota tracking hoạt động thế nào?
 
-**9Router theo dõi quota thời gian thực cho tất cả provider:**
+**LLM Gateway theo dõi quota thời gian thực cho tất cả provider:**
 
 **Tính năng:**
 - **Token consumption** - Tokens input/output mỗi request
@@ -154,17 +154,17 @@ Xem [tài liệu quota tracking](features/quota-tracking.md) để biết chi ti
 
 ---
 
-## 9Router có hoạt động với Cursor không?
+## LLM Gateway có hoạt động với Cursor không?
 
 **Có, nhưng Cursor yêu cầu endpoint cloud.**
 
 **Vấn đề:** Cursor IDE không hỗ trợ endpoint localhost.
 
-**Giải pháp:** Dùng 9Router cloud deployment:
+**Giải pháp:** Dùng LLM Gateway cloud deployment:
 
 ```
 Cursor Settings → Models → Advanced:
-  OpenAI API Base URL: https://9router.com/v1
+  OpenAI API Base URL: https://llm-gateway.com/v1
   OpenAI API Key: [from dashboard]
   Model: cc/claude-opus-4-5-20251101
 ```
@@ -173,7 +173,7 @@ Cursor Settings → Models → Advanced:
 ```bash
 # Deploy to VPS
 git clone https://github.com/decolua/9router.git
-cd 9router/app
+cd llm-gateway/app
 npm install && npm run build
 npm start
 
@@ -192,14 +192,14 @@ Xem [hướng dẫn tích hợp Cursor](integration/cursor.md) để biết chi 
 
 ---
 
-## Tôi có thể self-host 9Router không?
+## Tôi có thể self-host LLM Gateway không?
 
-**Có! 9Router hỗ trợ nhiều tùy chọn deployment:**
+**Có! LLM Gateway hỗ trợ nhiều tùy chọn deployment:**
 
 ### Localhost (Mặc định)
 ```bash
-npm install -g 9router
-9router
+npm install -g llm-gateway
+llm-gateway
 → Dashboard: http://localhost:3000
 → API: http://localhost:20128/v1
 ```
@@ -207,7 +207,7 @@ npm install -g 9router
 ### VPS/Cloud
 ```bash
 git clone https://github.com/decolua/9router.git
-cd 9router/app
+cd llm-gateway/app
 npm install && npm run build
 
 export JWT_SECRET="your-secure-secret"
@@ -219,23 +219,23 @@ npm start
 
 ### Docker
 ```bash
-docker build -t 9router .
+docker build -t llm-gateway .
 docker run -d \
   -p 3000:3000 \
   -e JWT_SECRET="your-secret" \
-  -v 9router-data:/app/data \
-  9router
+  -v llm-gateway-data:/app/data \
+  llm-gateway
 ```
 
 ### Cloudflare Workers
 ```bash
-cd 9router/app
+cd llm-gateway/app
 npm run deploy:cloudflare
 ```
 
 **Biến môi trường:**
 - `JWT_SECRET` - **PHẢI đổi trong production!**
-- `DATA_DIR` - Đường dẫn lưu database (mặc định: `~/.9router`)
+- `DATA_DIR` - Đường dẫn lưu database (mặc định: `~/.llm-gateway`)
 - `INITIAL_PASSWORD` - Đăng nhập Dashboard (mặc định: `123456`)
 - `NODE_ENV` - Đặt `production` để deploy
 
@@ -245,11 +245,11 @@ Xem [hướng dẫn deployment](getting-started/installation.md#deployment) đ�
 
 ## Dữ liệu của tôi có an toàn không?
 
-**Có, 9Router ưu tiên bảo mật và quyền riêng tư:**
+**Có, LLM Gateway ưu tiên bảo mật và quyền riêng tư:**
 
 **Local storage:**
-- Mọi dữ liệu lưu cục bộ tại `~/.9router` (hoặc `DATA_DIR` tùy chỉnh)
-- Không gửi data đến server 9Router
+- Mọi dữ liệu lưu cục bộ tại `~/.llm-gateway` (hoặc `DATA_DIR` tùy chỉnh)
+- Không gửi data đến server LLM Gateway
 - OAuth tokens mã hóa bằng JWT
 
 **Không telemetry:**
@@ -268,31 +268,31 @@ Xem [hướng dẫn deployment](getting-started/installation.md#deployment) đ�
 - Bật HTTPS cho cloud deployment
 - Xoay API key định kỳ
 
-**9Router lưu gì:**
+**LLM Gateway lưu gì:**
 - Tokens OAuth của provider (mã hóa)
 - API keys (mã hóa)
 - Thống kê sử dụng (chỉ cục bộ)
 - Cấu hình combo
 
-**9Router KHÔNG lưu:**
+**LLM Gateway KHÔNG lưu:**
 - Prompts hoặc responses của bạn
 - Code bạn tạo
 - Thông tin cá nhân
 
 ---
 
-## Làm thế nào để cập nhật 9Router?
+## Làm thế nào để cập nhật LLM Gateway?
 
 **Phương thức cập nhật phụ thuộc loại cài đặt:**
 
 ### Global NPM Install
 ```bash
-npm update -g 9router
+npm update -g llm-gateway
 ```
 
 ### Local Install
 ```bash
-cd 9router/app
+cd llm-gateway/app
 git pull origin main
 npm install
 npm run build
@@ -301,23 +301,23 @@ npm start
 
 ### Docker
 ```bash
-docker pull 9router:latest
-docker stop 9router
-docker rm 9router
+docker pull llm-gateway:latest
+docker stop llm-gateway
+docker rm llm-gateway
 docker run -d \
   -p 3000:3000 \
-  -v 9router-data:/app/data \
-  9router:latest
+  -v llm-gateway-data:/app/data \
+  llm-gateway:latest
 ```
 
 **Kiểm tra version:**
 ```bash
-9router --version
+llm-gateway --version
 ```
 
 **Breaking changes:**
 - Xem [CHANGELOG.md](https://github.com/decolua/9router/blob/main/CHANGELOG.md)
-- Backup `~/.9router` trước khi update lớn
+- Backup `~/.llm-gateway` trước khi update lớn
 - Xem hướng dẫn migration cho major version
 
 ---
@@ -339,8 +339,8 @@ docker run -d \
 3. **Submit code:**
    ```bash
    # Fork repo
-   git clone https://github.com/YOUR_USERNAME/9router.git
-   cd 9router
+   git clone https://github.com/YOUR_USERNAME/llm-gateway.git
+   cd llm-gateway
    
    # Create branch
    git checkout -b feature/your-feature
@@ -381,7 +381,7 @@ Xem [CONTRIBUTING.md](https://github.com/decolua/9router/blob/main/CONTRIBUTING.
 
 ## Cần trợ giúp thêm?
 
-- **Documentation:** [9router.com/docs](https://9router.com/docs)
+- **Documentation:** [llm-gateway.com/docs](https://llm-gateway.com/docs)
 - **GitHub:** [github.com/decolua/9router](https://github.com/decolua/9router)
 - **Issues:** [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
 - **Troubleshooting:** [troubleshooting.md](troubleshooting.md)

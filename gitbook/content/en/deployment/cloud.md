@@ -1,6 +1,6 @@
 # ☁️ Cloud Deployment
 
-Deploy 9Router on VPS or Docker for remote access and production use.
+Deploy LLM Gateway on VPS or Docker for remote access and production use.
 
 ---
 
@@ -17,7 +17,7 @@ Deploy 9Router on VPS or Docker for remote access and production use.
 
 ```bash
 git clone https://github.com/decolua/9router.git
-cd 9router/app
+cd llm-gateway/app
 ```
 
 ### Step 2: Install Dependencies
@@ -39,7 +39,7 @@ Create a `.env` file or export variables:
 ```bash
 export JWT_SECRET="your-secure-secret-change-this-to-random-string"
 export INITIAL_PASSWORD="your-secure-password"
-export DATA_DIR="/var/lib/9router"
+export DATA_DIR="/var/lib/llm-gateway"
 export NODE_ENV="production"
 export REQUIRE_API_KEY="true"
 export API_KEY_SECRET="replace-with-random-secret"
@@ -54,7 +54,7 @@ export AUTH_COOKIE_SECURE="true"
 |----------|---------|-------------|
 | `JWT_SECRET` | Auto-generated | **MUST change in production!** Used for JWT token signing |
 | `INITIAL_PASSWORD` | `123456` | Dashboard login password |
-| `DATA_DIR` | `~/.9router` | Database and data storage path |
+| `DATA_DIR` | `~/.llm-gateway` | Database and data storage path |
 | `NODE_ENV` | `development` | Set to `production` for deployment |
 | `REQUIRE_API_KEY` | `false` | Enforce gateway API keys on `/v1/*`, model listing, token counting, and cloud sync routes |
 | `API_KEY_SECRET` | built-in fallback | HMAC secret for generated gateway key format |
@@ -66,8 +66,8 @@ export AUTH_COOKIE_SECURE="true"
 ### Step 5: Create Data Directory
 
 ```bash
-sudo mkdir -p /var/lib/9router
-sudo chown $USER:$USER /var/lib/9router
+sudo mkdir -p /var/lib/llm-gateway
+sudo chown $USER:$USER /var/lib/llm-gateway
 ```
 
 ### Step 6: Start Application
@@ -84,8 +84,8 @@ PM2 keeps your application running and restarts it on crashes:
 # Install PM2 globally
 npm install -g pm2
 
-# Start 9Router with PM2
-pm2 start npm --name 9router -- start
+# Start LLM Gateway with PM2
+pm2 start npm --name llm-gateway -- start
 
 # Save PM2 configuration
 pm2 save
@@ -99,13 +99,13 @@ pm2 startup
 
 ```bash
 # View logs
-pm2 logs 9router
+pm2 logs llm-gateway
 
 # Restart application
-pm2 restart 9router
+pm2 restart llm-gateway
 
 # Stop application
-pm2 stop 9router
+pm2 stop llm-gateway
 
 # View status
 pm2 status
@@ -157,17 +157,17 @@ CMD ["npm", "run", "start"]
 
 ```bash
 # Build image
-docker build -t 9router .
+docker build -t llm-gateway .
 
 # Run container
 docker run -d \
-  --name 9router \
+  --name llm-gateway \
   -p 3000:3000 \
   -p 20128:20128 \
   -e JWT_SECRET="your-secure-secret-change-this" \
   -e INITIAL_PASSWORD="your-secure-password" \
-  -v 9router-data:/app/data \
-  9router
+  -v llm-gateway-data:/app/data \
+  llm-gateway
 ```
 
 ### Option 2: Docker Compose
@@ -178,9 +178,9 @@ Create `docker-compose.yml`:
 version: '3.8'
 
 services:
-  9router:
+  llm-gateway:
     build: .
-    container_name: 9router
+    container_name: llm-gateway
     ports:
       - "3000:3000"
       - "20128:20128"
@@ -190,11 +190,11 @@ services:
       - INITIAL_PASSWORD=your-secure-password
       - DATA_DIR=/app/data
     volumes:
-      - 9router-data:/app/data
+      - llm-gateway-data:/app/data
     restart: unless-stopped
 
 volumes:
-  9router-data:
+  llm-gateway-data:
 ```
 
 **Run with Docker Compose:**
@@ -233,7 +233,7 @@ sudo apt install nginx
 
 ### Step 2: Configure Nginx
 
-Create `/etc/nginx/sites-available/9router`:
+Create `/etc/nginx/sites-available/llm-gateway`:
 
 ```nginx
 server {
@@ -257,7 +257,7 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
-    # Proxy to 9Router
+    # Proxy to LLM Gateway
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -294,7 +294,7 @@ server {
 
 ```bash
 # Create symbolic link
-sudo ln -s /etc/nginx/sites-available/9router /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/llm-gateway /etc/nginx/sites-enabled/
 
 # Test configuration
 sudo nginx -t
@@ -354,7 +354,7 @@ sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 
-# If NOT using reverse proxy, allow 9Router ports
+# If NOT using reverse proxy, allow LLM Gateway ports
 sudo ufw allow 3000/tcp
 sudo ufw allow 20128/tcp
 
@@ -384,22 +384,22 @@ ssh -L 3000:localhost:3000 user@your-server.com
 # Update system packages
 sudo apt update && sudo apt upgrade -y
 
-# Update 9Router
-cd /path/to/9router/app
+# Update LLM Gateway
+cd /path/to/llm-gateway/app
 git pull
 npm install
 npm run build
-pm2 restart 9router
+pm2 restart llm-gateway
 ```
 
 ### 5. Backup Strategy
 
 ```bash
 # Backup data directory
-tar -czf 9router-backup-$(date +%Y%m%d).tar.gz /var/lib/9router
+tar -czf llm-gateway-backup-$(date +%Y%m%d).tar.gz /var/lib/llm-gateway
 
 # Automated daily backup (add to crontab)
-0 2 * * * tar -czf /backups/9router-$(date +\%Y\%m\%d).tar.gz /var/lib/9router
+0 2 * * * tar -czf /backups/llm-gateway-$(date +\%Y\%m\%d).tar.gz /var/lib/llm-gateway
 ```
 
 ---
@@ -413,7 +413,7 @@ tar -czf 9router-backup-$(date +%Y%m%d).tar.gz /var/lib/9router
 pm2 status
 
 # View logs
-pm2 logs 9router --lines 100
+pm2 logs llm-gateway --lines 100
 
 # Monitor resources
 pm2 monit
@@ -450,20 +450,20 @@ netstat -tulpn | grep -E '3000|20128'
 
 ```bash
 # Check logs
-pm2 logs 9router
+pm2 logs llm-gateway
 
 # Check if ports are in use
 sudo lsof -i :3000
 sudo lsof -i :20128
 
 # Check environment variables
-pm2 env 9router
+pm2 env llm-gateway
 ```
 
 ### Nginx 502 Bad Gateway
 
 ```bash
-# Check if 9Router is running
+# Check if LLM Gateway is running
 pm2 status
 
 # Check Nginx error logs
@@ -481,8 +481,8 @@ Ensure `proxy_buffering off` is set in Nginx configuration for SSE support.
 
 ```bash
 # Fix data directory permissions
-sudo chown -R $USER:$USER /var/lib/9router
-chmod 755 /var/lib/9router
+sudo chown -R $USER:$USER /var/lib/llm-gateway
+chmod 755 /var/lib/llm-gateway
 ```
 
 ---

@@ -1,6 +1,6 @@
 # ☁️ クラウドデプロイメント
 
-リモートアクセスと本番利用のため、VPSまたはDockerに9Routerをデプロイ。
+リモートアクセスと本番利用のため、VPSまたはDockerにLLM Gatewayをデプロイ。
 
 ---
 
@@ -17,7 +17,7 @@
 
 ```bash
 git clone https://github.com/decolua/9router.git
-cd 9router/app
+cd llm-gateway/app
 ```
 
 ### ステップ2: 依存関係をインストール
@@ -39,7 +39,7 @@ npm run build
 ```bash
 export JWT_SECRET="your-secure-secret-change-this-to-random-string"
 export INITIAL_PASSWORD="your-secure-password"
-export DATA_DIR="/var/lib/9router"
+export DATA_DIR="/var/lib/llm-gateway"
 export NODE_ENV="production"
 ```
 
@@ -49,15 +49,15 @@ export NODE_ENV="production"
 |----------|---------|-------------|
 | `JWT_SECRET` | 自動生成 | **本番環境では必ず変更!** JWTトークンの署名に使用 |
 | `INITIAL_PASSWORD` | `123456` | ダッシュボードログインパスワード |
-| `DATA_DIR` | `~/.9router` | データベースとデータの保存パス |
+| `DATA_DIR` | `~/.llm-gateway` | データベースとデータの保存パス |
 | `NODE_ENV` | `development` | デプロイ時は `production` に設定 |
 | `ENABLE_REQUEST_LOGS` | `false` | デバッグリクエスト/レスポンスログを有効化 |
 
 ### ステップ5: データディレクトリを作成
 
 ```bash
-sudo mkdir -p /var/lib/9router
-sudo chown $USER:$USER /var/lib/9router
+sudo mkdir -p /var/lib/llm-gateway
+sudo chown $USER:$USER /var/lib/llm-gateway
 ```
 
 ### ステップ6: アプリケーションを起動
@@ -74,8 +74,8 @@ PM2はアプリケーションを稼働させ続け、クラッシュ時に再�
 # PM2をグローバルにインストール
 npm install -g pm2
 
-# PM2で9Routerを起動
-pm2 start npm --name 9router -- start
+# PM2でLLM Gatewayを起動
+pm2 start npm --name llm-gateway -- start
 
 # PM2設定を保存
 pm2 save
@@ -89,13 +89,13 @@ pm2 startup
 
 ```bash
 # ログを表示
-pm2 logs 9router
+pm2 logs llm-gateway
 
 # アプリケーションを再起動
-pm2 restart 9router
+pm2 restart llm-gateway
 
 # アプリケーションを停止
-pm2 stop 9router
+pm2 stop llm-gateway
 
 # ステータスを表示
 pm2 status
@@ -147,17 +147,17 @@ CMD ["npm", "run", "start"]
 
 ```bash
 # イメージをビルド
-docker build -t 9router .
+docker build -t llm-gateway .
 
 # コンテナを実行
 docker run -d \
-  --name 9router \
+  --name llm-gateway \
   -p 3000:3000 \
   -p 20128:20128 \
   -e JWT_SECRET="your-secure-secret-change-this" \
   -e INITIAL_PASSWORD="your-secure-password" \
-  -v 9router-data:/app/data \
-  9router
+  -v llm-gateway-data:/app/data \
+  llm-gateway
 ```
 
 ### オプション2: Docker Compose
@@ -168,9 +168,9 @@ docker run -d \
 version: '3.8'
 
 services:
-  9router:
+  llm-gateway:
     build: .
-    container_name: 9router
+    container_name: llm-gateway
     ports:
       - "3000:3000"
       - "20128:20128"
@@ -180,11 +180,11 @@ services:
       - INITIAL_PASSWORD=your-secure-password
       - DATA_DIR=/app/data
     volumes:
-      - 9router-data:/app/data
+      - llm-gateway-data:/app/data
     restart: unless-stopped
 
 volumes:
-  9router-data:
+  llm-gateway-data:
 ```
 
 **Docker Composeで実行:**
@@ -223,7 +223,7 @@ sudo apt install nginx
 
 ### ステップ2: Nginxを設定
 
-`/etc/nginx/sites-available/9router` を作成:
+`/etc/nginx/sites-available/llm-gateway` を作成:
 
 ```nginx
 server {
@@ -247,7 +247,7 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
-    # Proxy to 9Router
+    # Proxy to LLM Gateway
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -284,7 +284,7 @@ server {
 
 ```bash
 # シンボリックリンクを作成
-sudo ln -s /etc/nginx/sites-available/9router /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/llm-gateway /etc/nginx/sites-enabled/
 
 # 設定をテスト
 sudo nginx -t
@@ -333,7 +333,7 @@ sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 
-# リバースプロキシを使用しない場合、9Routerポートを許可
+# リバースプロキシを使用しない場合、LLM Gatewayポートを許可
 sudo ufw allow 3000/tcp
 sudo ufw allow 20128/tcp
 
@@ -363,22 +363,22 @@ ssh -L 3000:localhost:3000 user@your-server.com
 # システムパッケージを更新
 sudo apt update && sudo apt upgrade -y
 
-# 9Routerを更新
-cd /path/to/9router/app
+# LLM Gatewayを更新
+cd /path/to/llm-gateway/app
 git pull
 npm install
 npm run build
-pm2 restart 9router
+pm2 restart llm-gateway
 ```
 
 ### 5. バックアップ戦略
 
 ```bash
 # データディレクトリをバックアップ
-tar -czf 9router-backup-$(date +%Y%m%d).tar.gz /var/lib/9router
+tar -czf llm-gateway-backup-$(date +%Y%m%d).tar.gz /var/lib/llm-gateway
 
 # 自動毎日バックアップ (crontabに追加)
-0 2 * * * tar -czf /backups/9router-$(date +\%Y\%m\%d).tar.gz /var/lib/9router
+0 2 * * * tar -czf /backups/llm-gateway-$(date +\%Y\%m\%d).tar.gz /var/lib/llm-gateway
 ```
 
 ---
@@ -392,7 +392,7 @@ tar -czf 9router-backup-$(date +%Y%m%d).tar.gz /var/lib/9router
 pm2 status
 
 # ログを表示
-pm2 logs 9router --lines 100
+pm2 logs llm-gateway --lines 100
 
 # リソースをモニタリング
 pm2 monit
@@ -429,20 +429,20 @@ netstat -tulpn | grep -E '3000|20128'
 
 ```bash
 # ログを確認
-pm2 logs 9router
+pm2 logs llm-gateway
 
 # ポートが使用中か確認
 sudo lsof -i :3000
 sudo lsof -i :20128
 
 # 環境変数を確認
-pm2 env 9router
+pm2 env llm-gateway
 ```
 
 ### Nginx 502 Bad Gateway
 
 ```bash
-# 9Routerが実行中か確認
+# LLM Gatewayが実行中か確認
 pm2 status
 
 # Nginxエラーログを確認
@@ -460,8 +460,8 @@ SSEサポート用にNginx設定で `proxy_buffering off` が設定されてい�
 
 ```bash
 # データディレクトリ権限を修正
-sudo chown -R $USER:$USER /var/lib/9router
-chmod 755 /var/lib/9router
+sudo chown -R $USER:$USER /var/lib/llm-gateway
+chmod 755 /var/lib/llm-gateway
 ```
 
 ---

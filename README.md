@@ -849,7 +849,7 @@ docker stop llm-gateway && docker rm llm-gateway
 |----------|---------|-------------|
 | `JWT_SECRET` | Auto-generated | JWT signing secret for dashboard auth cookie |
 | `INITIAL_PASSWORD` | `123456` | First login password when no saved hash exists |
-| `DATA_DIR` | `~/.9router` | Main app data location (SQLite at `$DATA_DIR/db/data.sqlite`) |
+| `DATA_DIR` | `~/.llm-gateway` | Main app data location (SQLite at `$DATA_DIR/db/data.sqlite`) |
 | `PORT` | framework default | Service port (`20128` in examples) |
 | `HOSTNAME` | framework default | Bind host (Docker defaults to `0.0.0.0`) |
 | `NODE_ENV` | runtime default | Set `production` for deploy |

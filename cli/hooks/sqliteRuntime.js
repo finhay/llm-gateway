@@ -11,8 +11,8 @@ const BETTER_SQLITE3_VERSION = "12.6.2";
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
   return process.platform === "win32"
-    ? path.join(process.env.APPDATA || os.homedir(), "9router")
-    : path.join(os.homedir(), ".9router");
+    ? path.join(process.env.APPDATA || os.homedir(), "llm-gateway")
+    : path.join(os.homedir(), ".llm-gateway");
 }
 
 function getRuntimeDir() {
@@ -31,10 +31,10 @@ function ensureRuntimeDir() {
   const pkgPath = path.join(dir, "package.json");
   if (!fs.existsSync(pkgPath)) {
     fs.writeFileSync(pkgPath, JSON.stringify({
-      name: "9router-runtime",
+      name: "llm-gateway-runtime",
       version: "1.0.0",
       private: true,
-      description: "User-writable runtime deps for 9router (better-sqlite3 native binary)",
+      description: "User-writable runtime deps for llm-gateway (better-sqlite3 native binary)",
     }, null, 2));
   }
   return dir;
@@ -65,7 +65,7 @@ function npmInstall(pkgs, opts = {}) {
   const args = ["install", ...pkgs, "--no-audit", "--no-fund", "--prefer-online"];
   if (opts.optional) args.push("--no-save");
   const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  console.log(`[9router][runtime] ${npmCmd} ${args.join(" ")}  (cwd: ${cwd})`);
+  console.log(`[llm-gateway][runtime] ${npmCmd} ${args.join(" ")}  (cwd: ${cwd})`);
   const res = spawnSync(npmCmd, args, {
     cwd,
     stdio: opts.silent ? "ignore" : "inherit",
@@ -83,13 +83,13 @@ function ensureSqliteRuntime({ silent = false } = {}) {
 
   const needBetterSqlite = !hasModule("better-sqlite3") || !isBetterSqliteBinaryValid();
   if (!needBetterSqlite) {
-    if (!silent) console.log("[9router][runtime] better-sqlite3 OK");
+    if (!silent) console.log("[llm-gateway][runtime] better-sqlite3 OK");
     return { betterSqlite: true };
   }
 
   const ok = npmInstall([`better-sqlite3@${BETTER_SQLITE3_VERSION}`], { optional: true, silent });
   if (!ok && !silent) {
-    console.warn("[9router][runtime] better-sqlite3 install failed (will use node:sqlite or sql.js fallback)");
+    console.warn("[llm-gateway][runtime] better-sqlite3 install failed (will use node:sqlite or sql.js fallback)");
   }
   return {
     betterSqlite: ok && hasModule("better-sqlite3") && isBetterSqliteBinaryValid(),

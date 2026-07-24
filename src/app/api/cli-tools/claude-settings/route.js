@@ -64,12 +64,12 @@ export async function GET() {
     }
 
     const settings = await readSettings();
-    const has9Router = !!(settings?.env?.ANTHROPIC_BASE_URL);
+    const hasLlmGateway = !!(settings?.env?.ANTHROPIC_BASE_URL);
 
     return NextResponse.json({
       installed: true,
       settings: settings,
-      has9Router: has9Router,
+      hasLlmGateway: hasLlmGateway,
       settingsPath: getClaudeSettingsPath(),
     });
   } catch (error) {

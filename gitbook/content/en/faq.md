@@ -1,12 +1,12 @@
 # Frequently Asked Questions
 
-Common questions about 9Router.
+Common questions about LLM Gateway.
 
 ---
 
-## What is 9Router?
+## What is LLM Gateway?
 
-**9Router is an AI model router that maximizes your subscription value and minimizes costs.**
+**LLM Gateway is an AI model router that maximizes your subscription value and minimizes costs.**
 
 It intelligently routes requests across multiple AI providers using a 3-tier fallback system:
 1. **Subscription tier** - Maximize Claude Code, Codex, Gemini quotas you already pay for
@@ -23,7 +23,7 @@ It intelligently routes requests across multiple AI providers using a 3-tier fal
 
 ## How does pricing work?
 
-**9Router uses a 3-tier pricing strategy:**
+**LLM Gateway uses a 3-tier pricing strategy:**
 
 ### Tier 1: Subscription (Maximize First)
 - **Claude Code** (Pro/Max): $20-100/month - 5-hour + weekly quota
@@ -50,9 +50,9 @@ It intelligently routes requests across multiple AI providers using a 3-tier fal
 
 ---
 
-## Is 9Router free?
+## Is LLM Gateway free?
 
-**Yes, 9Router itself is 100% free and open source.**
+**Yes, LLM Gateway itself is 100% free and open source.**
 
 **Free tier providers available:**
 - **Gemini CLI** - 180K completions/month (FREE Google account)
@@ -96,7 +96,7 @@ See [providers documentation](providers/subscription.md) for details.
 
 ## Can I use multiple providers?
 
-**Yes! This is 9Router's core feature.**
+**Yes! This is LLM Gateway's core feature.**
 
 **Combos allow you to chain multiple providers with automatic fallback:**
 
@@ -129,7 +129,7 @@ See [combos documentation](features/combos.md) for examples.
 
 ## How does quota tracking work?
 
-**9Router tracks quota in real-time for all providers:**
+**LLM Gateway tracks quota in real-time for all providers:**
 
 **Features:**
 - **Token consumption** - Input/output tokens per request
@@ -154,17 +154,17 @@ See [quota tracking documentation](features/quota-tracking.md) for details.
 
 ---
 
-## Does 9Router work with Cursor?
+## Does LLM Gateway work with Cursor?
 
 **Yes, but Cursor requires a cloud endpoint.**
 
 **Problem:** Cursor IDE doesn't support localhost endpoints.
 
-**Solution:** Use 9Router cloud deployment:
+**Solution:** Use LLM Gateway cloud deployment:
 
 ```
 Cursor Settings → Models → Advanced:
-  OpenAI API Base URL: https://9router.com/v1
+  OpenAI API Base URL: https://llm-gateway.com/v1
   OpenAI API Key: [from dashboard]
   Model: cc/claude-opus-4-5-20251101
 ```
@@ -173,7 +173,7 @@ Cursor Settings → Models → Advanced:
 ```bash
 # Deploy to VPS
 git clone https://github.com/decolua/9router.git
-cd 9router/app
+cd llm-gateway/app
 npm install && npm run build
 npm start
 
@@ -192,14 +192,14 @@ See [Cursor integration guide](integration/cursor.md) for details.
 
 ---
 
-## Can I self-host 9Router?
+## Can I self-host LLM Gateway?
 
-**Yes! 9Router supports multiple deployment options:**
+**Yes! LLM Gateway supports multiple deployment options:**
 
 ### Localhost (Default)
 ```bash
-npm install -g 9router
-9router
+npm install -g llm-gateway
+llm-gateway
 → Dashboard: http://localhost:3000
 → API: http://localhost:20128/v1
 ```
@@ -207,7 +207,7 @@ npm install -g 9router
 ### VPS/Cloud
 ```bash
 git clone https://github.com/decolua/9router.git
-cd 9router/app
+cd llm-gateway/app
 npm install && npm run build
 
 export JWT_SECRET="your-secure-secret"
@@ -219,23 +219,23 @@ npm start
 
 ### Docker
 ```bash
-docker build -t 9router .
+docker build -t llm-gateway .
 docker run -d \
   -p 3000:3000 \
   -e JWT_SECRET="your-secret" \
-  -v 9router-data:/app/data \
-  9router
+  -v llm-gateway-data:/app/data \
+  llm-gateway
 ```
 
 ### Cloudflare Workers
 ```bash
-cd 9router/app
+cd llm-gateway/app
 npm run deploy:cloudflare
 ```
 
 **Environment variables:**
 - `JWT_SECRET` - **MUST change in production!**
-- `DATA_DIR` - Database storage path (default: `~/.9router`)
+- `DATA_DIR` - Database storage path (default: `~/.llm-gateway`)
 - `INITIAL_PASSWORD` - Dashboard login (default: `123456`)
 - `NODE_ENV` - Set to `production` for deploy
 
@@ -245,11 +245,11 @@ See [deployment guide](getting-started/installation.md#deployment) for details.
 
 ## Is my data secure?
 
-**Yes, 9Router prioritizes security and privacy:**
+**Yes, LLM Gateway prioritizes security and privacy:**
 
 **Local storage:**
-- All data stored locally in `~/.9router` (or custom `DATA_DIR`)
-- No data sent to 9Router servers
+- All data stored locally in `~/.llm-gateway` (or custom `DATA_DIR`)
+- No data sent to LLM Gateway servers
 - OAuth tokens encrypted with JWT
 
 **No telemetry:**
@@ -271,32 +271,32 @@ See [deployment guide](getting-started/installation.md#deployment) for details.
 - Use scoped gateway keys and rotate or revoke them regularly
 - Configure per-key rate limits and budgets for shared/team deployments
 
-**What 9Router stores:**
+**What LLM Gateway stores:**
 - Provider OAuth tokens (encrypted)
 - Gateway API key hashes and safe prefixes; raw gateway keys are shown only once on create/rotation
 - Provider API keys/tokens needed for upstream calls
 - Usage statistics (local only)
 - Combo configurations
 
-**What 9Router does NOT store:**
+**What LLM Gateway does NOT store:**
 - Your prompts or responses
 - Code you generate
 - Personal information
 
 ---
 
-## How do I update 9Router?
+## How do I update LLM Gateway?
 
 **Update methods depend on installation type:**
 
 ### Global NPM Install
 ```bash
-npm update -g 9router
+npm update -g llm-gateway
 ```
 
 ### Local Install
 ```bash
-cd 9router/app
+cd llm-gateway/app
 git pull origin main
 npm install
 npm run build
@@ -305,23 +305,23 @@ npm start
 
 ### Docker
 ```bash
-docker pull 9router:latest
-docker stop 9router
-docker rm 9router
+docker pull llm-gateway:latest
+docker stop llm-gateway
+docker rm llm-gateway
 docker run -d \
   -p 3000:3000 \
-  -v 9router-data:/app/data \
-  9router:latest
+  -v llm-gateway-data:/app/data \
+  llm-gateway:latest
 ```
 
 **Check version:**
 ```bash
-9router --version
+llm-gateway --version
 ```
 
 **Breaking changes:**
 - Check [CHANGELOG.md](https://github.com/decolua/9router/blob/main/CHANGELOG.md)
-- Backup `~/.9router` before major updates
+- Backup `~/.llm-gateway` before major updates
 - Review migration guides for major versions
 
 ---
@@ -343,8 +343,8 @@ docker run -d \
 3. **Submit code:**
    ```bash
    # Fork repo
-   git clone https://github.com/YOUR_USERNAME/9router.git
-   cd 9router
+   git clone https://github.com/YOUR_USERNAME/llm-gateway.git
+   cd llm-gateway
    
    # Create branch
    git checkout -b feature/your-feature
@@ -385,7 +385,7 @@ See [CONTRIBUTING.md](https://github.com/decolua/9router/blob/main/CONTRIBUTING.
 
 ## Need More Help?
 
-- **Documentation:** [9router.com/docs](https://9router.com/docs)
+- **Documentation:** [llm-gateway.com/docs](https://llm-gateway.com/docs)
 - **GitHub:** [github.com/decolua/9router](https://github.com/decolua/9router)
 - **Issues:** [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
 - **Troubleshooting:** [troubleshooting.md](troubleshooting.md)

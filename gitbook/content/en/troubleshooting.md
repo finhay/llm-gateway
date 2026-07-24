@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and solutions when using 9Router.
+Common issues and solutions when using LLM Gateway.
 
 ---
 
@@ -112,7 +112,7 @@ Common issues and solutions when using 9Router.
 **Solutions:**
 
 1. **Auto-refresh (default):**
-   9Router automatically refreshes tokens. Wait 30 seconds and retry.
+   LLM Gateway automatically refreshes tokens. Wait 30 seconds and retry.
 
 2. **Manual reconnect:**
    ```
@@ -169,15 +169,15 @@ Common issues and solutions when using 9Router.
 **Problem:** "ECONNREFUSED" or "Cannot connect to localhost:20128".
 
 **Causes:**
-- 9Router not running
+- LLM Gateway not running
 - Port 20128 blocked
 - Firewall blocking connection
 
 **Solutions:**
 
-1. **Start 9Router:**
+1. **Start LLM Gateway:**
    ```bash
-   9router
+   llm-gateway
    ```
    Dashboard should open at http://localhost:3000
 
@@ -198,7 +198,7 @@ Common issues and solutions when using 9Router.
 4. **Use cloud endpoint:**
    If localhost doesn't work (e.g., Cursor IDE):
    ```
-   Endpoint: https://9router.com/v1
+   Endpoint: https://llm-gateway.com/v1
    ```
 
 ---
@@ -209,15 +209,15 @@ Common issues and solutions when using 9Router.
 
 **Causes:**
 - Port 3000 already in use
-- 9Router crashed
+- LLM Gateway crashed
 - Browser cache issues
 
 **Solutions:**
 
-1. **Check if 9Router is running:**
+1. **Check if LLM Gateway is running:**
    ```bash
    # Check process
-   ps aux | grep 9router
+   ps aux | grep llm-gateway
    
    # Check port 3000
    lsof -i :3000
@@ -233,13 +233,13 @@ Common issues and solutions when using 9Router.
    taskkill /PID <PID> /F
    ```
 
-3. **Restart 9Router:**
+3. **Restart LLM Gateway:**
    ```bash
    # Stop
-   pkill -f 9router
+   pkill -f llm-gateway
    
    # Start
-   9router
+   llm-gateway
    ```
 
 4. **Clear browser cache:**
@@ -381,5 +381,5 @@ Common issues and solutions when using 9Router.
 ## Need More Help?
 
 - **GitHub Issues:** [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
-- **Documentation:** [9router.com/docs](https://9router.com/docs)
+- **Documentation:** [llm-gateway.com/docs](https://llm-gateway.com/docs)
 - **FAQ:** [faq.md](faq.md)

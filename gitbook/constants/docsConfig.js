@@ -233,10 +233,10 @@ export function getNavigation(lang) {
 
 // Static config (logo, urls, default English nav for backward compatibility).
 export const DOCS_CONFIG = {
-  title: "9Router Documentation",
+  title: "LLM Gateway Documentation",
   description: "Smart AI model router - Maximize subscriptions, minimize costs",
-  logo: "9Router",
-  appUrl: "https://9router.com",
+  logo: "LLM Gateway",
+  appUrl: "https://llm-gateway.com",
   githubUrl: "https://github.com/decolua/9router",
   navigation: getNavigation(DEFAULT_LANG)
 };

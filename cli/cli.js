@@ -10,7 +10,7 @@ const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRunt
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
 const args = process.argv.slice(2);
 
-// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
+// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.llm-gateway/runtime
 // so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
 // better-sqlite3 is optional. Logs to stderr only on failure.
 try { ensureSqliteRuntime({ silent: true }); } catch {}
@@ -24,9 +24,9 @@ const APP_NAME = pkg.name; // Use from package.json
 const DEFAULT_PORT = 20128;
 const DEFAULT_HOST = "0.0.0.0";
 const MAX_PORT_ATTEMPTS = 10;
-// Identifiers for killAllAppProcesses - only kill 9router specifically
+// Identifiers for killAllAppProcesses - only kill llm-gateway specifically
 const PROCESS_IDENTIFIERS = [
-  '9router'  // Only package name - avoid killing other apps
+  'llm-gateway'  // Only package name - avoid killing other apps
 ];
 
 // Parse arguments
@@ -76,8 +76,8 @@ const RUNTIME = process.execPath;
 // Get app data dir (matches app/src/lib/dataDir.js convention)
 function getAppDataDir() {
   return process.platform === "win32"
-    ? path.join(process.env.APPDATA || "", "9router")
-    : path.join(os.homedir(), ".9router");
+    ? path.join(process.env.APPDATA || "", "llm-gateway")
+    : path.join(os.homedir(), ".llm-gateway");
 }
 
 // Kill PID from file (best-effort, removes file after)
@@ -134,7 +134,7 @@ function killCloudflaredByAppPort(appPort) {
   return pids;
 }
 
-// Kill all 9router processes
+// Kill all llm-gateway processes
 function killAllAppProcesses(appPort) {
   return new Promise((resolve) => {
     try {
@@ -160,7 +160,7 @@ function killAllAppProcesses(appPort) {
           });
           const lines = output.split("\n").slice(1).filter(l => l.trim());
           lines.forEach(line => {
-            const isAppProcess = line.toLowerCase().includes("9router") ||
+            const isAppProcess = line.toLowerCase().includes("llm-gateway") ||
               line.toLowerCase().includes("next-server");
             if (isAppProcess) {
               const match = line.match(/^"(\d+)"/);
@@ -182,7 +182,7 @@ function killAllAppProcesses(appPort) {
           const lines = output.split('\n');
 
           lines.forEach(line => {
-            const isAppProcess = line.includes("9router") || line.includes("next-server");
+            const isAppProcess = line.includes("llm-gateway") || line.includes("next-server");
             if (isAppProcess) {
               const parts = line.trim().split(/\s+/);
               const pid = parts[1];
@@ -574,7 +574,7 @@ function startServer() {
           });
           bgProcess.unref();
 
-          console.log(`\n🔔 9Router is now running in background (PID: ${bgProcess.pid})`);
+          console.log(`\n🔔 LLM Gateway is now running in background (PID: ${bgProcess.pid})`);
           console.log(`   Server: http://${displayHost}:${port}`);
           console.log(`\n💡 You can close this terminal. Right-click tray icon to:`);
           console.log(`   • Open Dashboard`);
@@ -621,7 +621,7 @@ function startServer() {
     if (restartCount >= MAX_RESTARTS) {
       console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MITM and restarting...`);
       try {
-        const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "9router", "db.json") : path.join(".9router", "db.json"));
+        const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "llm-gateway", "db.json") : path.join(".llm-gateway", "db.json"));
         if (fs.existsSync(dbPath)) {
           const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
           if (db.settings) db.settings.mitmEnabled = false;

@@ -1,12 +1,12 @@
 # よくある質問
 
-9Routerに関する一般的な質問。
+LLM Gatewayに関する一般的な質問。
 
 ---
 
-## 9Routerとは?
+## LLM Gatewayとは?
 
-**9Routerは、サブスクリプションの価値を最大化し、コストを最小限に抑えるAIモデルルーターです。**
+**LLM Gatewayは、サブスクリプションの価値を最大化し、コストを最小限に抑えるAIモデルルーターです。**
 
 3階層フォールバックシステムを使用して、複数のAIプロバイダー間でリクエストをインテリジェントにルーティングします:
 1. **サブスクリプション階層** - すでに支払っているClaude Code、Codex、Geminiのクォータを最大化
@@ -23,7 +23,7 @@
 
 ## 料金体系はどうなっていますか?
 
-**9Routerは3階層の料金戦略を使用します:**
+**LLM Gatewayは3階層の料金戦略を使用します:**
 
 ### Tier 1: サブスクリプション(最初に最大化)
 - **Claude Code** (Pro/Max): 月$20〜100 - 5時間 + 週次クォータ
@@ -50,9 +50,9 @@
 
 ---
 
-## 9Routerは無料ですか?
+## LLM Gatewayは無料ですか?
 
-**はい、9Router自体は100%無料でオープンソースです。**
+**はい、LLM Gateway自体は100%無料でオープンソースです。**
 
 **利用可能な無料階層プロバイダー:**
 - **Gemini CLI** - 月18万コンプリーション(無料Googleアカウント)
@@ -96,7 +96,7 @@
 
 ## 複数のプロバイダーを使用できますか?
 
-**はい! これは9Routerのコア機能です。**
+**はい! これはLLM Gatewayのコア機能です。**
 
 **コンボにより、複数のプロバイダーを自動フォールバック付きで連鎖させることができます:**
 
@@ -129,7 +129,7 @@ Dashboard → Combos → Create New
 
 ## クォータトラッキングはどのように機能しますか?
 
-**9Routerはすべてのプロバイダーのクォータをリアルタイムで追跡します:**
+**LLM Gatewayはすべてのプロバイダーのクォータをリアルタイムで追跡します:**
 
 **機能:**
 - **トークン消費** - リクエストごとの入出力トークン
@@ -154,17 +154,17 @@ Dashboard → Providers → Quota Tracking
 
 ---
 
-## 9RouterはCursorで動作しますか?
+## LLM GatewayはCursorで動作しますか?
 
 **はい、ただしCursorはクラウドエンドポイントが必要です。**
 
 **問題:** Cursor IDEはlocalhostエンドポイントをサポートしていません。
 
-**解決策:** 9Routerクラウドデプロイメントを使用:
+**解決策:** LLM Gatewayクラウドデプロイメントを使用:
 
 ```
 Cursor Settings → Models → Advanced:
-  OpenAI API Base URL: https://9router.com/v1
+  OpenAI API Base URL: https://llm-gateway.com/v1
   OpenAI API Key: [ダッシュボードから取得]
   Model: cc/claude-opus-4-5-20251101
 ```
@@ -173,7 +173,7 @@ Cursor Settings → Models → Advanced:
 ```bash
 # VPSへデプロイ
 git clone https://github.com/decolua/9router.git
-cd 9router/app
+cd llm-gateway/app
 npm install && npm run build
 npm start
 
@@ -192,14 +192,14 @@ npm start
 
 ---
 
-## 9Routerをセルフホストできますか?
+## LLM Gatewayをセルフホストできますか?
 
-**はい! 9Routerは複数のデプロイメントオプションをサポートします:**
+**はい! LLM Gatewayは複数のデプロイメントオプションをサポートします:**
 
 ### Localhost(デフォルト)
 ```bash
-npm install -g 9router
-9router
+npm install -g llm-gateway
+llm-gateway
 → Dashboard: http://localhost:3000
 → API: http://localhost:20128/v1
 ```
@@ -207,7 +207,7 @@ npm install -g 9router
 ### VPS/クラウド
 ```bash
 git clone https://github.com/decolua/9router.git
-cd 9router/app
+cd llm-gateway/app
 npm install && npm run build
 
 export JWT_SECRET="your-secure-secret"
@@ -219,23 +219,23 @@ npm start
 
 ### Docker
 ```bash
-docker build -t 9router .
+docker build -t llm-gateway .
 docker run -d \
   -p 3000:3000 \
   -e JWT_SECRET="your-secret" \
-  -v 9router-data:/app/data \
-  9router
+  -v llm-gateway-data:/app/data \
+  llm-gateway
 ```
 
 ### Cloudflare Workers
 ```bash
-cd 9router/app
+cd llm-gateway/app
 npm run deploy:cloudflare
 ```
 
 **環境変数:**
 - `JWT_SECRET` - **本番環境で必ず変更!**
-- `DATA_DIR` - データベース保存パス(デフォルト: `~/.9router`)
+- `DATA_DIR` - データベース保存パス(デフォルト: `~/.llm-gateway`)
 - `INITIAL_PASSWORD` - ダッシュボードログイン(デフォルト: `123456`)
 - `NODE_ENV` - デプロイ時は`production`に設定
 
@@ -245,11 +245,11 @@ npm run deploy:cloudflare
 
 ## データは安全ですか?
 
-**はい、9Routerはセキュリティとプライバシーを優先します:**
+**はい、LLM Gatewayはセキュリティとプライバシーを優先します:**
 
 **ローカルストレージ:**
-- すべてのデータは`~/.9router`(またはカスタム`DATA_DIR`)にローカル保存
-- 9Routerサーバーへのデータ送信なし
+- すべてのデータは`~/.llm-gateway`(またはカスタム`DATA_DIR`)にローカル保存
+- LLM Gatewayサーバーへのデータ送信なし
 - OAuthトークンはJWTで暗号化
 
 **テレメトリなし:**
@@ -268,31 +268,31 @@ npm run deploy:cloudflare
 - クラウドデプロイでHTTPSを有効化
 - APIキーを定期的にローテーション
 
-**9Routerが保存するもの:**
+**LLM Gatewayが保存するもの:**
 - プロバイダーOAuthトークン(暗号化)
 - APIキー(暗号化)
 - 使用統計(ローカルのみ)
 - コンボ設定
 
-**9Routerが保存しないもの:**
+**LLM Gatewayが保存しないもの:**
 - プロンプトやレスポンス
 - 生成したコード
 - 個人情報
 
 ---
 
-## 9Routerを更新するには?
+## LLM Gatewayを更新するには?
 
 **更新方法はインストールタイプによって異なります:**
 
 ### グローバルNPMインストール
 ```bash
-npm update -g 9router
+npm update -g llm-gateway
 ```
 
 ### ローカルインストール
 ```bash
-cd 9router/app
+cd llm-gateway/app
 git pull origin main
 npm install
 npm run build
@@ -301,23 +301,23 @@ npm start
 
 ### Docker
 ```bash
-docker pull 9router:latest
-docker stop 9router
-docker rm 9router
+docker pull llm-gateway:latest
+docker stop llm-gateway
+docker rm llm-gateway
 docker run -d \
   -p 3000:3000 \
-  -v 9router-data:/app/data \
-  9router:latest
+  -v llm-gateway-data:/app/data \
+  llm-gateway:latest
 ```
 
 **バージョンを確認:**
 ```bash
-9router --version
+llm-gateway --version
 ```
 
 **破壊的変更:**
 - [CHANGELOG.md](https://github.com/decolua/9router/blob/main/CHANGELOG.md)を確認
-- メジャー更新前に`~/.9router`をバックアップ
+- メジャー更新前に`~/.llm-gateway`をバックアップ
 - メジャーバージョンの移行ガイドを確認
 
 ---
@@ -339,8 +339,8 @@ docker run -d \
 3. **コードを提出:**
    ```bash
    # リポジトリをフォーク
-   git clone https://github.com/YOUR_USERNAME/9router.git
-   cd 9router
+   git clone https://github.com/YOUR_USERNAME/llm-gateway.git
+   cd llm-gateway
    
    # ブランチを作成
    git checkout -b feature/your-feature
@@ -381,7 +381,7 @@ docker run -d \
 
 ## さらにヘルプが必要?
 
-- **ドキュメント:** [9router.com/docs](https://9router.com/docs)
+- **ドキュメント:** [llm-gateway.com/docs](https://llm-gateway.com/docs)
 - **GitHub:** [github.com/decolua/9router](https://github.com/decolua/9router)
 - **Issues:** [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
 - **トラブルシューティング:** [troubleshooting.md](troubleshooting.md)
