@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: develop-llm-gateway
+  namespace: develop
+  labels:
+    app: develop-llm-gateway
+spec:
+  selector:
+    matchLabels:
+      app: develop-llm-gateway
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: develop-llm-gateway
+    spec:
+      containers:
+      - name: develop-llm-gateway
+        image: dockerhub.finhay.lan/develop-llm-gateway:0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 20128
+        envFrom:
+        - secretRef:
+            name: develop-llm-gateway
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+        volumeMounts:
+          - name: tz-config
+            mountPath: /etc/localtime
+      volumes:
+        - name: tz-config
+          hostPath:
+            path: /usr/share/zoneinfo/Asia/Ho_Chi_Minh
+      nodeSelector:
+        k8spool: finhay-all-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: develop-llm-gateway
+  namespace: develop
+spec:
+  selector:
+    app: develop-llm-gateway
+  ports:
+    - protocol: TCP
+      port: 20128
+      targetPort: 20128
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: develop-llm-gateway
+  namespace: develop
+spec:
+  rules:
+  - host: "develop-llm-gateway.finhay.com.vn"
+    http:
+      paths:
+        - path:
+          backend:
+            serviceName: develop-llm-gateway
+            servicePort: 20128
