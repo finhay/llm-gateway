@@ -1,5 +1,13 @@
 pipeline {
     agent any
+    parameters {
+        choice(name: 'WORKSPACE', choices: ['develop', 'products'], description: 'Môi trường build')
+        string(name: 'IMAGES', defaultValue: 'llm-gateway', description: 'Tên image')
+        string(name: 'DOCKERFILE', defaultValue: 'Dockerfile', description: 'Đường dẫn Dockerfile')
+        string(name: 'DEPLOYMENT', defaultValue: 'llm-gateway', description: 'Tên deployment trên K8s')
+        string(name: 'K8SCLS', defaultValue: 'devk8scls2', description: 'Tên cluster K8s')
+        string(name: 'URL_PRIVATE_REGISTRY', defaultValue: 'dockerhub.finhay.lan', description: 'URL private registry')
+    }
     environment {
         BRANCH_NAME = "${GIT_BRANCH.split("/")[1]}"
     }
@@ -41,7 +49,6 @@ pipeline {
                 }
             }
         }
-
         stage('Promote to Develop') {
             steps {
                 script {
@@ -63,10 +70,8 @@ pipeline {
             script {
                 env.GIT_COMMIT_MSG = sh (script: 'git log -1 --pretty=%B ${GIT_COMMIT}', returnStdout: true).trim()
                 env.GIT_AUTHOR = sh (script: 'git log -1 --pretty=%an ${GIT_COMMIT}', returnStdout: true).trim()
-
                 def buildStatus = currentBuild.result ?: 'SUCCESS'
                 def environment = "${params.K8SCLS}-${WORKSPACE}"
-
                 echo "Sending notification to Google Chat..."
                 sh """
                     bash ./cicd/send-noti-to-ggchat.sh \
