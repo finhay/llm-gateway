@@ -17,11 +17,10 @@ pipeline {
                 script {
                     try {
                         if (params.WORKSPACE == "develop") {
-                            // Copy file biến môi trường nếu có
-                            sh '''
-                                sudo cp ./env/${WORKSPACE}.${IMAGES}.env ./.env || true
+                            sh """
+                                sudo cp ./env/${params.WORKSPACE}.${params.IMAGES}.env ./.env || true
                                 ls -lah
-                            '''
+                            """
                         }
                         if (params.WORKSPACE == "products") {
                             echo "Products environment - do nothing!"
@@ -38,9 +37,8 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Build và Push image dạng dockerhub.finhay.lan/develop-llm-gateway:${BUILD_NUMBER}
-                        sh 'bash ./cicd/build_image.sh $WORKSPACE $DOCKERFILE ${IMAGES} $BUILD_NUMBER ${URL_PRIVATE_REGISTRY}'
-                        sh 'sudo docker images "${URL_PRIVATE_REGISTRY}/${WORKSPACE}-${IMAGES}" --digests'
+                        sh "bash ./cicd/build_image.sh ${params.WORKSPACE} ${params.DOCKERFILE} ${params.IMAGES} ${BUILD_NUMBER} ${params.URL_PRIVATE_REGISTRY}"
+                        sh "sudo docker images \"${params.URL_PRIVATE_REGISTRY}/${params.WORKSPACE}-${params.IMAGES}\" --digests"
                     }
                     catch (err) {
                         currentBuild.result = "FAILED"
@@ -53,9 +51,8 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Tự động update Deployment develop-llm-gateway trên K8s
-                        def deploymentName = "${WORKSPACE}-${IMAGES}"
-                        sh "bash ./cicd/update_image_to_service_on_k8s.sh \${K8SCLS} \$WORKSPACE ${deploymentName} \${IMAGES} \$BUILD_NUMBER \${URL_PRIVATE_REGISTRY}"
+                        def deploymentName = "${params.WORKSPACE}-${params.IMAGES}"
+                        sh "bash ./cicd/update_image_to_service_on_k8s.sh ${params.K8SCLS} ${params.WORKSPACE} ${deploymentName} ${params.IMAGES} ${BUILD_NUMBER} ${params.URL_PRIVATE_REGISTRY}"
                     }
                     catch (err) {
                         currentBuild.result = "FAILED"
@@ -71,17 +68,17 @@ pipeline {
                 env.GIT_COMMIT_MSG = sh (script: 'git log -1 --pretty=%B ${GIT_COMMIT}', returnStdout: true).trim()
                 env.GIT_AUTHOR = sh (script: 'git log -1 --pretty=%an ${GIT_COMMIT}', returnStdout: true).trim()
                 def buildStatus = currentBuild.result ?: 'SUCCESS'
-                def environment = "${params.K8SCLS}-${WORKSPACE}"
+                def environmentName = "${params.K8SCLS}-${params.WORKSPACE}"
                 echo "Sending notification to Google Chat..."
                 sh """
                     bash ./cicd/send-noti-to-ggchat.sh \
                         '${buildStatus}' \
                         '${BUILD_NUMBER}' \
-                        '${IMAGES}' \
-                        '${environment}' \
-                        '${GIT_COMMIT_MSG}' \
+                        '${params.IMAGES}' \
+                        '${environmentName}' \
+                        '${env.GIT_COMMIT_MSG}' \
                         '${BUILD_URL}' \
-                        '${GIT_AUTHOR}' \
+                        '${env.GIT_AUTHOR}' \
                         '${BRANCH_NAME}'
                 """
             }
