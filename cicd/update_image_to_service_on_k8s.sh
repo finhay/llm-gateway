@@ -1,17 +1,22 @@
 #!/bin/bash
-
 K8SCLS=$1
 WORKSPACE=$2
-DEPLOYMENTNAME=$3
+DEPLOYMENT=$3
 IMAGE_NAME=$4
 IMAGE_VERSION=$5
 REPO_URL=$6
 
-export KUBECONFIG=/var/lib/jenkins/.kube/$K8SCLS
-kubectl cluster-info
+FULL_IMAGE="${REPO_URL}/${WORKSPACE}-${IMAGE_NAME}:${IMAGE_VERSION}"
 
-echo "START UPDATE IMAGES $IMAGE_VERSION ON $WORKSPAICE - $DEPLOYMENTNAME"
-kubectl set image deployment/${DEPLOYMENTNAME} ${DEPLOYMENTNAME}=${REPO_URL}/${IMAGE_NAME}:${IMAGE_VERSION} --record -n $WORKSPACE
-# STRCOMAND=""
-echo "STRCOMAND: " $STRCOMAND
-# ansible masters -a "$STRCOMAND" -i /var/lib/jenkins/hostsk8scluster
+echo "Cluster: ${K8SCLS}"
+echo "Namespace: ${WORKSPACE}"
+echo "Deployment: ${DEPLOYMENT}"
+echo "Image: ${FULL_IMAGE}"
+
+kubectl set image deployment/${DEPLOYMENT} ${DEPLOYMENT}=${FULL_IMAGE} \
+    -n ${WORKSPACE} \
+    --record
+
+kubectl rollout status deployment/${DEPLOYMENT} \
+    -n ${WORKSPACE} \
+    --timeout=300s
