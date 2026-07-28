@@ -1,0 +1,85 @@
+pipeline {
+    agent any
+    environment {
+        BRANCH_NAME = "${GIT_BRANCH.split("/")[1]}"
+    }
+    stages {
+        stage('load env') {
+            steps {
+                script {
+                    try {
+                        if (params.WORKSPACE == "develop") {
+                            // Copy file biến môi trường nếu có
+                            sh '''
+                                sudo cp ./env/${WORKSPACE}.${IMAGES}.env ./.env || true
+                                ls -lah
+                            '''
+                        }
+                        if (params.WORKSPACE == "products") {
+                            echo "Products environment - do nothing!"
+                        }
+                    }
+                    catch (err) {
+                        currentBuild.result = "FAILED"
+                        throw err
+                    }
+                }
+            }
+        }
+        stage('Build and upload image') {
+            steps {
+                script {
+                    try {
+                        // Build và Push image dạng dockerhub.finhay.lan/develop-llm-gateway:${BUILD_NUMBER}
+                        sh 'bash ./cicd/build_image.sh $WORKSPACE $DOCKERFILE ${IMAGES} $BUILD_NUMBER ${URL_PRIVATE_REGISTRY}'
+                        sh 'sudo docker images "${URL_PRIVATE_REGISTRY}/${WORKSPACE}-${IMAGES}" --digests'
+                    }
+                    catch (err) {
+                        currentBuild.result = "FAILED"
+                        throw err
+                    }
+                }
+            }
+        }
+
+        stage('Promote to Develop') {
+            steps {
+                script {
+                    try {
+                        // Tự động update Deployment develop-llm-gateway trên K8s
+                        def deploymentName = "${WORKSPACE}-${IMAGES}"
+                        sh "bash ./cicd/update_image_to_service_on_k8s.sh \${K8SCLS} \$WORKSPACE ${deploymentName} \${IMAGES} \$BUILD_NUMBER \${URL_PRIVATE_REGISTRY}"
+                    }
+                    catch (err) {
+                        currentBuild.result = "FAILED"
+                        throw err
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                env.GIT_COMMIT_MSG = sh (script: 'git log -1 --pretty=%B ${GIT_COMMIT}', returnStdout: true).trim()
+                env.GIT_AUTHOR = sh (script: 'git log -1 --pretty=%an ${GIT_COMMIT}', returnStdout: true).trim()
+
+                def buildStatus = currentBuild.result ?: 'SUCCESS'
+                def environment = "${params.K8SCLS}-${WORKSPACE}"
+
+                echo "Sending notification to Google Chat..."
+                sh """
+                    bash ./cicd/send-noti-to-ggchat.sh \
+                        '${buildStatus}' \
+                        '${BUILD_NUMBER}' \
+                        '${IMAGES}' \
+                        '${environment}' \
+                        '${GIT_COMMIT_MSG}' \
+                        '${BUILD_URL}' \
+                        '${GIT_AUTHOR}' \
+                        '${BRANCH_NAME}'
+                """
+            }
+        }
+    }
+}

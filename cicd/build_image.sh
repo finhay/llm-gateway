@@ -1,0 +1,10 @@
+#!/bin/bash
+WORKSPACE=$1
+DOCKERFILE=$2
+IMAGE_NAME=$3
+IMAGE_VERSION=$4
+REPO_URL=$5
+
+sudo docker build -t ${IMAGE_NAME}:${IMAGE_VERSION} --build-arg NAME_SPACE=${WORKSPACE} -f ${DOCKERFILE} .
+sudo docker tag ${IMAGE_NAME}:${IMAGE_VERSION} ${REPO_URL}/${IMAGE_NAME}:${IMAGE_VERSION}
+sudo docker push ${REPO_URL}/${IMAGE_NAME}:${IMAGE_VERSION}
