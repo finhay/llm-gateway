@@ -182,8 +182,13 @@ export default function RequestDetailsTab() {
     setFilters({ provider: "", apiKeyId: "", startDate: "", endDate: "" });
   };
 
+  const findApiKey = (id) => apiKeys.find((k) => k.id === id);
+
+  // Name only (null when unknown) — used where the prefix is rendered separately.
+  const apiKeyName = (id) => findApiKey(id)?.name || null;
+
   const apiKeyLabel = (id) => {
-    const key = apiKeys.find((k) => k.id === id);
+    const key = findApiKey(id);
     if (!key) return id;
     return key.name ? `${key.name} (${key.keyPrefix || "—"})` : (key.keyPrefix || id);
   };
@@ -334,10 +339,15 @@ export default function RequestDetailsTab() {
                           className="text-left hover:text-primary transition-colors"
                           title="Filter by this key"
                         >
-                          <span className="font-medium">{apiKeyLabel(detail.apiKeyId).split(" (")[0]}</span>
-                          {detail.apiKeyPrefix && (
-                            <span className="ml-1 font-mono text-xs text-text-muted">{detail.apiKeyPrefix}</span>
+                          {apiKeyName(detail.apiKeyId) && (
+                            <span className="font-medium">{apiKeyName(detail.apiKeyId)}</span>
                           )}
+                          <span className={cn(
+                            "font-mono text-xs text-text-muted",
+                            apiKeyName(detail.apiKeyId) && "ml-1"
+                          )}>
+                            {detail.apiKeyPrefix || detail.apiKeyId}
+                          </span>
                         </button>
                       ) : (
                         <span className="text-text-muted">—</span>

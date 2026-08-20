@@ -363,10 +363,15 @@ export async function authenticateApiKey(request, { settings = null, requiredSco
   const rawKey = extractApiKey(request);
 
   if (!resolvedSettings.requireApiKey) {
-    return { ok: true, keyRecord: null, rawKey };
+    // Enforcement is off, so nothing here can reject the request. Still resolve the key
+    // when one is sent: without the record, usage gets filed under an unresolvable hash
+    // of the raw key and the dashboard can never show the key's name.
+    const keyRecord = rawKey ? await validateApiKey(rawKey) : null;
+    if (keyRecord) await updateApiKeyLastUsed(keyRecord.id);
+    return { ok: true, keyRecord, rawKey, enforced: false };
   }
   if (isInternalRequest(request)) {
-    return { ok: true, keyRecord: null, rawKey: null, internal: true };
+    return { ok: true, keyRecord: null, rawKey: null, internal: true, enforced: false };
   }
   if (!rawKey) {
     return { ok: false, status: 401, message: "Missing API key" };
@@ -387,7 +392,7 @@ export async function authenticateApiKey(request, { settings = null, requiredSco
   if (budget) return { ok: false, ...budget };
 
   await updateApiKeyLastUsed(keyRecord.id);
-  return { ok: true, keyRecord, rawKey };
+  return { ok: true, keyRecord, rawKey, enforced: true };
 }
 
 /**

@@ -181,6 +181,17 @@ const TABLE_OPTIONS = [
   { value: "endpoint", label: "Usage by Endpoint" },
 ];
 
+const DEFAULT_TABLE_VIEW = "apiKey";
+
+// Each view groups by a different column, so each gets its own default sort field —
+// "rawModel" means nothing in a view grouped by API key.
+const DEFAULT_SORT_BY = {
+  model: "rawModel",
+  account: "accountName",
+  apiKey: "keyName",
+  endpoint: "endpoint",
+};
+
 const PERIODS = [
   { value: "today", label: "Today" },
   { value: "24h", label: "24h" },
@@ -193,13 +204,14 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const sortBy = searchParams.get("sortBy") || "rawModel";
-  const sortOrder = searchParams.get("sortOrder") || "asc";
-
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
-  const [tableView, setTableView] = useState("model");
+  const [tableView, setTableView] = useState(DEFAULT_TABLE_VIEW);
+
+  const sortBy = searchParams.get("sortBy") || DEFAULT_SORT_BY[tableView] || "rawModel";
+  const sortOrder = searchParams.get("sortOrder") || "asc";
+
   const [viewMode, setViewMode] = useState("costs");
   const [providers, setProviders] = useState([]);
   const [periodLocal, setPeriodLocal] = useState("today");
@@ -281,6 +293,18 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       params.set("sortOrder", "asc");
     }
     router.replace(`?${params.toString()}`, { scroll: false });
+  }, [searchParams, router]);
+
+  // Drop the sort held in the URL when switching views — it names a column of the view
+  // being left, so the new view falls back to its own default.
+  const handleTableViewChange = useCallback((next) => {
+    setTableView(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.has("sortBy") || params.has("sortOrder")) {
+      params.delete("sortBy");
+      params.delete("sortOrder");
+      router.replace(`?${params.toString()}`, { scroll: false });
+    }
   }, [searchParams, router]);
 
   // Compute active table data
@@ -455,7 +479,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <select
             value={tableView}
-            onChange={(e) => setTableView(e.target.value)}
+            onChange={(e) => handleTableViewChange(e.target.value)}
             className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
             style={{ colorScheme: 'auto' }}
           >

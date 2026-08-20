@@ -75,6 +75,9 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(auth.status, auth.message);
   }
   clientRawRequest.apiKeyRecord = auth.keyRecord || null;
+  // The record is resolved for usage attribution even when enforcement is off, so keep
+  // the two apart: only an enforced key may reject a request.
+  clientRawRequest.apiKeyEnforced = auth.enforced === true;
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
@@ -149,7 +152,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const { provider, model } = modelInfo;
 
-  if (!isProviderAllowed(clientRawRequest?.apiKeyRecord, provider)) {
+  if (clientRawRequest?.apiKeyEnforced && !isProviderAllowed(clientRawRequest?.apiKeyRecord, provider)) {
     log.warn("AUTH", `API key not allowed to use provider: ${provider}`);
     return errorResponse(HTTP_STATUS.FORBIDDEN, `API key not allowed to use provider: ${provider}`);
   }
