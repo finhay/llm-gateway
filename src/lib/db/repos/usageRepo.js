@@ -42,11 +42,27 @@ function addToCounter(target, key, values) {
   if (values.meta) Object.assign(target[key], values.meta);
 }
 
+// Opaque, stable stand-in for a key we can't identify (unknown key sent while
+// enforcement is off). Never resolvable to a name — it only separates callers.
+function opaqueKeyDigest(rawKey) {
+  return crypto.createHash("sha256").update(rawKey).digest("hex").slice(0, 12);
+}
+
+// Identity used to group usage by key. The key id is authoritative: keyPrefix is
+// `sk-{machineId}` truncated, so every key minted on the same machine shares it and it
+// cannot tell two keys apart.
+function safeApiKeyIdentity(entry) {
+  if (entry.apiKeyId) return entry.apiKeyId;
+  if (entry.apiKeyPrefix) return entry.apiKeyPrefix;
+  if (!entry.apiKey || typeof entry.apiKey !== "string") return "local-no-key";
+  return opaqueKeyDigest(entry.apiKey);
+}
+
+// Display-only prefix. Not unique across keys — never group by this.
 function safeApiKeyDisplay(entry) {
   if (entry.apiKeyPrefix) return entry.apiKeyPrefix;
-  if (entry.apiKeyId) return entry.apiKeyId;
   if (!entry.apiKey || typeof entry.apiKey !== "string") return "local-no-key";
-  return crypto.createHash("sha256").update(entry.apiKey).digest("hex").slice(0, 12);
+  return opaqueKeyDigest(entry.apiKey);
 }
 
 function aggregateEntryToDay(day, entry) {
@@ -75,9 +91,18 @@ function aggregateEntryToDay(day, entry) {
     addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
   }
 
-  const apiKeyVal = safeApiKeyDisplay(entry);
+  const apiKeyVal = safeApiKeyIdentity(entry);
   const akModelKey = `${apiKeyVal}|${entry.model}|${entry.provider || "unknown"}`;
-  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: apiKeyVal === "local-no-key" ? null : apiKeyVal, apiKeyId: entry.apiKeyId || null } });
+  addToCounter(day.byApiKey, akModelKey, {
+    ...vals,
+    meta: {
+      rawModel: entry.model,
+      provider: entry.provider,
+      apiKey: apiKeyVal === "local-no-key" ? null : apiKeyVal,
+      apiKeyId: entry.apiKeyId || null,
+      keyPrefix: entry.apiKeyPrefix && entry.apiKeyPrefix !== "local-no-key" ? entry.apiKeyPrefix : null,
+    },
+  });
 
   const endpoint = entry.endpoint || "Unknown";
   const epKey = `${endpoint}|${entry.model}|${entry.provider || "unknown"}`;
@@ -363,8 +388,22 @@ export async function getUsageStats(period = "all") {
 
   let allApiKeys = [];
   try { allApiKeys = await getApiKeys(); } catch {}
+  // Usage rows never store the raw key — only the key id or a keyPrefix. Index by every
+  // identifier a row can carry so keyName resolves to the real name. Note a keyPrefix is
+  // shared by all keys from one machine, so it is only a last-resort alias: register ids
+  // last so an exact id always wins over an ambiguous prefix.
   const apiKeyMap = {};
-  for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
+  for (const k of allApiKeys) {
+    const info = { name: k.name, id: k.id, keyPrefix: k.keyPrefix, createdAt: k.createdAt };
+    for (const alias of [k.keyPrefix, k.key, k.id]) if (alias) apiKeyMap[alias] = info;
+  }
+  // `identifiers` are tried against the key table in order; `fallbacks` supply the string
+  // to display when none resolve (prefer a key prefix over an opaque uuid).
+  const resolveKeyName = (identifiers, fallbacks) => {
+    for (const id of identifiers) if (id && apiKeyMap[id]?.name) return apiKeyMap[id].name;
+    const shown = fallbacks.find((f) => typeof f === "string" && f);
+    return shown ? `${shown.slice(0, 8)}...` : "Local (No API Key)";
+  };
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
   const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
@@ -498,11 +537,10 @@ export async function getUsageStats(period = "all") {
         const provider = ak.provider || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         const apiKeyVal = ak.apiKey;
-        const keyInfo = apiKeyVal ? apiKeyMap[apiKeyVal] : null;
-        const keyName = keyInfo?.name || (apiKeyVal ? apiKeyVal.slice(0, 8) + "..." : "Local (No API Key)");
+        const keyName = resolveKeyName([ak.apiKeyId, apiKeyVal, ak.keyPrefix], [ak.keyPrefix, apiKeyVal]);
         const apiKeyKey = apiKeyVal || "local-no-key";
         if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKey: apiKeyVal, keyName, apiKeyKey, lastUsed: dateKey };
+          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKey: apiKeyVal, apiKeyId: ak.apiKeyId || null, keyPrefix: ak.keyPrefix || null, keyName, apiKeyKey, lastUsed: dateKey };
         }
         stats.byApiKey[akKey].requests += ak.requests || 0;
         stats.byApiKey[akKey].promptTokens += ak.promptTokens || 0;
@@ -530,7 +568,7 @@ export async function getUsageStats(period = "all") {
     // Overlay precise lastUsed timestamps from history
     const overlayCutoff = maxDays ? Date.now() - maxDays * 86400000 : 0;
     const histRows = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint FROM usageHistory WHERE timestamp >= ?`,
+      `SELECT timestamp, provider, model, connectionId, apiKey, apiKeyId, endpoint FROM usageHistory WHERE timestamp >= ?`,
       [new Date(overlayCutoff).toISOString()]
     );
     for (const e of histRows) {
@@ -544,8 +582,10 @@ export async function getUsageStats(period = "all") {
         if (stats.byAccount[accountKey] && new Date(ts) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = ts;
       }
 
-      const apiKeyKey = (e.apiKey && typeof e.apiKey === "string")
-        ? `${e.apiKey}|${e.model}|${e.provider || "unknown"}`
+      // Must mirror the identity used when the daily buckets were built.
+      const identity = e.apiKeyId || e.apiKey;
+      const apiKeyKey = (identity && typeof identity === "string")
+        ? `${identity}|${e.model}|${e.provider || "unknown"}`
         : "local-no-key";
       if (stats.byApiKey[apiKeyKey] && new Date(ts) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = ts;
 
@@ -564,7 +604,7 @@ export async function getUsageStats(period = "all") {
       cutoff = new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
     }
     const filtered = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
+      `SELECT timestamp, provider, model, connectionId, apiKey, apiKeyId, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
       [cutoff]
     );
 
@@ -608,12 +648,13 @@ export async function getUsageStats(period = "all") {
         if (new Date(r.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = r.timestamp;
       }
 
-      if (r.apiKey && typeof r.apiKey === "string") {
-        const keyInfo = apiKeyMap[r.apiKey];
-        const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
-        const akKey = `${r.apiKey}|${r.model}|${r.provider || "unknown"}`;
+      if (r.apiKeyId || (r.apiKey && typeof r.apiKey === "string")) {
+        // Group by key id — the prefix is shared by every key on this machine.
+        const identity = r.apiKeyId || r.apiKey;
+        const keyName = resolveKeyName([r.apiKeyId, r.apiKey], [r.apiKey, r.apiKeyId]);
+        const akKey = `${identity}|${r.model}|${r.provider || "unknown"}`;
         if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKey: r.apiKey, keyName, apiKeyKey: r.apiKey, lastUsed: r.timestamp };
+          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKey: identity, apiKeyId: r.apiKeyId || null, keyPrefix: r.apiKey || null, keyName, apiKeyKey: identity, lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cost += entryCost;
