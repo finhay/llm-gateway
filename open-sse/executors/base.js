@@ -117,7 +117,10 @@ export class BaseExecutor {
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex, credentials);
       const transformedBody = this.transformRequest(model, body, stream, credentials);
-      const headers = this.buildHeaders(credentials, stream);
+      // Pass request-local routing context to header builders. Existing
+      // executors safely ignore extra arguments; executors whose auth depends
+      // on the selected model must not store that model on the shared instance.
+      const headers = this.buildHeaders(credentials, stream, url, model);
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
