@@ -59,17 +59,25 @@ export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    const key = body.reason
-      ? await revokeApiKey(id, { type: body.actorType || null, id: body.actorId || null }, body.reason)
-      : ((await deleteApiKey(id)) ? await getApiKeyById(id) : null);
 
-    if (!key) {
+    // A reason means "revoke": keep the key on file, disabled. Otherwise delete it outright.
+    if (body.reason) {
+      const key = await revokeApiKey(id, { type: body.actorType || null, id: body.actorId || null }, body.reason);
+      if (!key) {
+        return NextResponse.json({ error: "Key not found" }, { status: 404 });
+      }
+      return NextResponse.json({ message: "Key revoked successfully", key });
+    }
+
+    // Snapshot before deleting — the row is unreadable afterwards.
+    const key = await getApiKeyById(id);
+    if (!key || !(await deleteApiKey(id))) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ message: "Key revoked successfully", key });
+    return NextResponse.json({ message: "Key deleted successfully", key });
   } catch (error) {
-    console.log("Error revoking key:", error);
-    return NextResponse.json({ error: "Failed to revoke key" }, { status: 500 });
+    console.log("Error deleting key:", error);
+    return NextResponse.json({ error: "Failed to delete key" }, { status: 500 });
   }
 }
