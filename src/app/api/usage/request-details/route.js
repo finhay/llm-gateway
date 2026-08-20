@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
+import { redactRequestDetails } from "@/lib/requestDetailRedaction";
 
 /**
  * GET /api/usage/request-details
@@ -48,7 +49,10 @@ export async function GET(request) {
     
     const result = await getRequestDetails(filter);
     
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      details: redactRequestDetails(result.details),
+    });
   } catch (error) {
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(

@@ -154,6 +154,15 @@ if (standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules
 }
 console.log("✅ Copied standalone build\n");
 
+// Step 3a: The packaged CLI must launch through the trusted-peer wrapper.
+const customServerSrc = path.join(appDir, "custom-server.js");
+if (!fs.existsSync(customServerSrc)) {
+  console.error("❌ custom-server.js not found; refusing to build an insecure CLI package");
+  process.exit(1);
+}
+fs.copyFileSync(customServerSrc, path.join(cliAppDir, "custom-server.js"));
+console.log("✅ Copied custom-server.js\n");
+
 // Step 3b: Ensure sql.js (pure JS fallback) bundled in app/cli/app/node_modules.
 // Strip better-sqlite3 (native) — it lives in ~/.llm-gateway/runtime to avoid
 // Windows EBUSY during global CLI updates. node:sqlite (Node ≥22.5) is also
