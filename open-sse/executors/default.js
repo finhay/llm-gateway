@@ -30,9 +30,10 @@ export class DefaultExecutor extends BaseExecutor {
       case "claude":
       case "glm":
       case "kimi":
+        return `${this.config.baseUrl}?beta=true`;
       case "minimax":
       case "minimax-cn":
-        return `${this.config.baseUrl}?beta=true`;
+        return this.config.baseUrl;
       case "kimi-coding":
         return `${this.config.baseUrl}?beta=true`;
       case "gemini":
