@@ -14,7 +14,7 @@ import {
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
-export default function ToolDetailClient({ toolId, machineId }) {
+export default function ToolDetailClient({ toolId, machineId, backHref = "/dashboard/cli-tools" }) {
   const tool = CLI_TOOLS[toolId];
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -146,7 +146,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:px-0">
-      <Link href="/dashboard/cli-tools" className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary w-fit">
+      <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary w-fit">
         <span className="material-symbols-outlined text-[18px]">arrow_back</span>
         Back to CLI Tools
       </Link>
