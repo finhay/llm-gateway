@@ -199,9 +199,11 @@ export function buildProviderUrl(provider, model, stream = true, options = {}) {
 
     case "glm":
     case "kimi":
-    case "minimax":
       // Claude-compatible providers
       return `${config.baseUrl}?beta=true`;
+
+    case "minimax":
+      return config.baseUrl;
 
     default:
       return config.baseUrl;
