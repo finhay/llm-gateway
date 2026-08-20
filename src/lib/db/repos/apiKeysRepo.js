@@ -318,8 +318,30 @@ export async function rotateApiKey(id, actor = {}) {
   return result;
 }
 
+// Hard delete — the row is gone for good. Use revokeApiKey() to keep the key on file
+// in a disabled state. Usage/admin event rows are intentionally left behind (no FK
+// cascade) so history and the audit trail survive the key itself.
 export async function deleteApiKey(id) {
-  return Boolean(await revokeApiKey(id, { type: "system", id: null }, "deleted"));
+  const db = await getAdapter();
+  let deleted = false;
+  db.transaction(() => {
+    const row = db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
+    if (!row) return;
+    const before = rowToKey(row);
+    db.run(`DELETE FROM apiKeys WHERE id = ?`, [id]);
+    insertAdminEvent(db, {
+      apiKeyId: id,
+      keyPrefix: before.keyPrefix,
+      actorType: "system",
+      actorId: null,
+      action: "deleted",
+      beforeJson: before,
+      afterJson: null,
+      reason: "deleted",
+    });
+    deleted = true;
+  });
+  return deleted;
 }
 
 export async function updateApiKeyLastUsed(id) {
