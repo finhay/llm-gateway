@@ -30,6 +30,8 @@
  * @property {Record<string,unknown>} [providerSpecificData]
  */
 
+import { assertPublicUrl } from "../../../src/shared/utils/ssrfGuard.js";
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 /**
@@ -70,6 +72,7 @@ export function getProviderSetting(params, key) {
  */
 export function resolveBaseUrl(config, params) {
   const override = getProviderSetting(params, "baseUrl");
+  if (override) assertPublicUrl(override);
   return (override || config.baseUrl).replace(/\/+$/, "");
 }
 

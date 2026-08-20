@@ -4,6 +4,11 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
+import { checkLock, getClientIp, recordFailure, recordSuccess } from "@/lib/auth/loginLimiter";
+import { isLocalRequest } from "@/dashboardGuard";
+
+const RESET_HINT = "Set INITIAL_PASSWORD or change the password from a trusted local session.";
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 function isTunnelRequest(request, settings) {
   const host = (request.headers.get("host") || "").split(":")[0].toLowerCase();
@@ -14,6 +19,19 @@ function isTunnelRequest(request, settings) {
 
 export async function POST(request) {
   try {
+    const clientIp = getClientIp(request);
+    const lock = checkLock(clientIp);
+    if (lock.locked) {
+      return NextResponse.json(
+        {
+          error: `Too many failed attempts. Try again in ${lock.retryAfter}s. ${RESET_HINT}`,
+          retryAfter: lock.retryAfter,
+          resetHint: RESET_HINT,
+        },
+        { status: 429, headers: { ...NO_STORE_HEADERS, "Retry-After": String(lock.retryAfter) } },
+      );
+    }
+
     const { password } = await request.json();
     const settings = await getSettings();
 
@@ -39,14 +57,52 @@ export async function POST(request) {
     }
 
     if (isValid) {
+      recordSuccess(clientIp);
+
+      const mustChangePassword =
+        !storedHash && !process.env.INITIAL_PASSWORD && !isLocalRequest(request);
+
+      if (mustChangePassword) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Default password must be changed before remote access. Change it locally or set INITIAL_PASSWORD.",
+            mustChangePassword: true,
+          },
+          { status: 403, headers: NO_STORE_HEADERS },
+        );
+      }
+
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json(
+        { success: true, mustChangePassword: false },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
-    return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+    const { remainingBeforeLock } = recordFailure(clientIp);
+    const postFailureLock = checkLock(clientIp);
+    if (postFailureLock.locked) {
+      return NextResponse.json(
+        {
+          error: `Too many failed attempts. Try again in ${postFailureLock.retryAfter}s. ${RESET_HINT}`,
+          retryAfter: postFailureLock.retryAfter,
+          resetHint: RESET_HINT,
+        },
+        { status: 429, headers: { ...NO_STORE_HEADERS, "Retry-After": String(postFailureLock.retryAfter) } },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: `Invalid password. ${remainingBeforeLock} attempt(s) left before lockout.`,
+        remainingBeforeLock,
+      },
+      { status: 401, headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }

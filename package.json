@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "next dev --webpack --port 20128",
     "build": "next build --webpack",
-    "start": "next start",
+    "postbuild": "node scripts/copy-standalone-assets.mjs",
+    "start": "node custom-server.js --port 20128",
     "dev:bun": "bun --bun next dev --webpack --port 20128",
     "build:bun": "bun --bun next build --webpack",
-    "start:bun": "bun ./.next/standalone/server.js"
+    "postbuild:bun": "node scripts/copy-standalone-assets.mjs",
+    "start:bun": "bun ./.next/standalone/custom-server.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
