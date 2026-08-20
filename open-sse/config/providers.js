@@ -425,6 +425,22 @@ export const PROVIDERS = {
   "nous-research": { baseUrl: "https://inference-api.nousresearch.com/v1/chat/completions", format: "openai" },
   glhf: { baseUrl: "https://glhf.chat/api/openai/v1/chat/completions", format: "openai" },
   blackbox: { baseUrl: "https://api.blackbox.ai/chat/completions", format: "openai" },
+  // === Synced from upstream 9router v0.5.55 ===
+  featherless: { baseUrl: "https://api.featherless.ai/v1/chat/completions", format: "openai" },
+  kimchi: { baseUrl: "https://llm.kimchi.dev/openai/v1/chat/completions", format: "openai", headers: {"User-Agent":"kimchi/0.1.50"} },
+  "mimo-free": { baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat", format: "openai", noAuth: true },
+  "perplexity-agent": { baseUrl: "https://api.perplexity.ai/v1/responses", format: "openai-responses" },
+  venice: { baseUrl: "https://api.venice.ai/api/v1/chat/completions", format: "openai" },
+  "vercel-ai-gateway": { baseUrl: "https://ai-gateway.vercel.sh/v1/chat/completions", format: "openai" },
+  "alims-intl": { baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions", format: "openai", headers: {} },
+  "api-airforce": { baseUrl: "https://api.airforce/v1/chat/completions", format: "openai", headers: {"HTTP-Referer":"https://endpoint-proxy.local","X-Title":"Endpoint Proxy"} },
+  baidu: { baseUrl: "https://qianfan.baidubce.com/v2/chat/completions", format: "openai" },
+  bluesminds: { baseUrl: "https://api.bluesminds.com/v1/chat/completions", format: "openai" },
+  "kilo-gateway": { baseUrl: "https://api.kilo.ai/api/gateway/chat/completions", format: "openai" },
+  tencent: { baseUrl: "https://api.hunyuan.cloud.tencent.com/v1/chat/completions", format: "openai" },
+  poolside: { baseUrl: "https://inference.poolside.ai/v1/chat/completions", format: "openai" },
+  tokenrouter: { baseUrl: "https://api.tokenrouter.com/v1/chat/completions", format: "openai" },
+  "alitp-intl": { baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions", format: "openai", headers: {} },
 };
 
 export const OLLAMA_LOCAL_DEFAULT_HOST = "http://localhost:11434";
