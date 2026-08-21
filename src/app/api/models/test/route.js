@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { APP_CONFIG } from "@/shared/constants/config";
+import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
@@ -9,7 +10,10 @@ export async function POST(request) {
 
     const baseUrl = `http://127.0.0.1:${process.env.PORT || APP_CONFIG.appPort}`;
 
-    const headers = { "Content-Type": "application/json", "x-9r-internal-token": APP_CONFIG.machineId };
+    const headers = {
+      "Content-Type": "application/json",
+      "x-9r-internal-token": await getConsistentMachineId(),
+    };
 
     const start = Date.now();
 

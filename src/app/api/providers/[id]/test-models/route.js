@@ -3,10 +3,8 @@ import { getProviderConnectionById } from "@/lib/localDb";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { APP_CONFIG } from "@/shared/constants/config";
+import { getConsistentMachineId } from "@/shared/utils/machineId";
 
-/**
- * Get an active API key to pass through auth when requireApiKey is enabled.
- */
 /**
  * Ping a single model via internal completions endpoint (OpenAI format).
  * open-sse handles all provider translation automatically.
@@ -14,7 +12,10 @@ import { APP_CONFIG } from "@/shared/constants/config";
 async function pingModel(modelId, baseUrl) {
   const start = Date.now();
   try {
-    const headers = { "Content-Type": "application/json", "x-9r-internal-token": APP_CONFIG.machineId };
+    const headers = {
+      "Content-Type": "application/json",
+      "x-9r-internal-token": await getConsistentMachineId(),
+    };
     const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
       method: "POST",
       headers,

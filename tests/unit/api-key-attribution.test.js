@@ -11,6 +11,7 @@ const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 let db;
 let auth;
+let getConsistentMachineId;
 let key;
 
 beforeAll(async () => {
@@ -20,6 +21,7 @@ beforeAll(async () => {
   db = await import("@/lib/db/index.js");
   await db.initDb();
   auth = await import("@/sse/services/auth.js");
+  ({ getConsistentMachineId } = await import("@/shared/utils/machineId.js"));
   key = await db.createApiKey("tuantm", "machine-1");
 });
 
@@ -112,6 +114,19 @@ describe("authenticateApiKey — attribution vs enforcement", () => {
       const result = await authenticate(null);
       expect(result.ok).toBe(false);
       expect(result.status).toBe(401);
+    });
+
+    it("accepts an authenticated loopback request used by dashboard model tests", async () => {
+      const internalRequest = new Request("http://127.0.0.1:20128/api/v1/chat/completions", {
+        method: "POST",
+        headers: { "x-9r-internal-token": await getConsistentMachineId() },
+      });
+      const result = await auth.authenticateApiKey(internalRequest, {
+        requiredScope: auth.API_KEY_SCOPES.CHAT_WRITE,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.internal).toBe(true);
     });
 
     it("rejects a revoked key", async () => {
