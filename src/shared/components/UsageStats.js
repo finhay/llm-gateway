@@ -386,7 +386,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           ),
           renderDetailCells: (item) => (
             <>
-              <td className="px-6 py-3 font-medium">{item.keyName}</td>
+              <td className="py-3 pl-14 pr-6 font-medium">{item.keyName}</td>
               <td className="px-6 py-3">{item.rawModel}</td>
               <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
