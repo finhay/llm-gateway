@@ -4,6 +4,7 @@ import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLock
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
 import * as log from "../utils/logger.js";
 
 export const API_KEY_SCOPES = Object.freeze({
@@ -29,6 +30,19 @@ globalThis._apiKeyRateLimiter = rateLimiter;
 async function isInternalRequest(request) {
   const token = request.headers.get("x-9r-internal-token");
   if (!token || token !== await getConsistentMachineId()) return false;
+
+  // In production, Next may reconstruct request.url with the public gateway
+  // hostname even when this request originated from the dashboard's 127.0.0.1
+  // fetch. custom-server.js provides the stronger proof: headers stamped from
+  // the actual TCP peer and protected by a process-local secret.
+  if (hasTrustedPeerHeaders(request)) {
+    if (request.headers.get("x-llm-gateway-via-proxy")) return false;
+    const peer = String(request.headers.get("x-llm-gateway-real-ip") || "").toLowerCase();
+    return peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1";
+  }
+
+  // next dev and unit tests do not reliably execute custom-server.js.
+  if (process.env.NODE_ENV === "production") return false;
   try {
     const url = new URL(request.url);
     return url.hostname === "127.0.0.1" || url.hostname === "localhost";
