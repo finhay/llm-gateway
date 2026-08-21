@@ -43,7 +43,8 @@ export function createSSEStream(options = {}) {
     connectionId = null,
     body = null,
     onStreamComplete = null,
-    apiKey = null
+    apiKey = null,
+    clientModel = null
   } = options;
 
   let buffer = "";
@@ -87,6 +88,20 @@ export function createSSEStream(options = {}) {
 
               // Ensure OpenAI-required fields are present on streaming chunks (Letta compat)
               let fieldsInjected = false;
+              // Anthropic-compatible providers may return their upstream model
+              // name and a provider-native message ID. Native Claude clients
+              // validate the response against the selected client-facing model
+              // and expect Anthropic-style msg_ identifiers.
+              if (sourceFormat === FORMATS.CLAUDE && parsed.type === "message_start" && parsed.message) {
+                if (clientModel && parsed.message.model !== clientModel) {
+                  parsed.message.model = clientModel;
+                  fieldsInjected = true;
+                }
+                if (typeof parsed.message.id === "string" && !parsed.message.id.startsWith("msg_")) {
+                  parsed.message.id = `msg_${parsed.message.id}`;
+                  fieldsInjected = true;
+                }
+              }
               if (parsed.choices !== undefined) {
                 if (!parsed.object) { parsed.object = "chat.completion.chunk"; fieldsInjected = true; }
                 if (!parsed.created) { parsed.created = Math.floor(Date.now() / 1000); fieldsInjected = true; }
@@ -120,6 +135,16 @@ export function createSSEStream(options = {}) {
               if (reasoning && typeof reasoning === "string") {
                 totalContentLength += reasoning.length;
                 accumulatedThinking += reasoning;
+              }
+              if (sourceFormat === FORMATS.CLAUDE && parsed.type === "content_block_delta") {
+                if (typeof parsed.delta?.text === "string") {
+                  totalContentLength += parsed.delta.text.length;
+                  accumulatedContent += parsed.delta.text;
+                }
+                if (typeof parsed.delta?.thinking === "string") {
+                  totalContentLength += parsed.delta.thinking.length;
+                  accumulatedThinking += parsed.delta.thinking;
+                }
               }
 
               const extracted = extractUsage(parsed);
@@ -279,13 +304,16 @@ export function createSSEStream(options = {}) {
             appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
           }
           
-          // IMPORTANT: In passthrough mode we still must terminate the SSE stream.
-          // Some clients (e.g. OpenClaw) expect the OpenAI-style sentinel:
-          //   data: [DONE]\n\n
-          // Without it they can hang until timeout and trigger failover.
-          const doneOutput = "data: [DONE]\n\n";
-          reqLogger?.appendConvertedChunk?.(doneOutput);
-          controller.enqueue(sharedEncoder.encode(doneOutput));
+          // OpenAI-compatible clients expect a [DONE] sentinel, but Anthropic
+          // streams terminate with message_stop followed by EOF. Appending the
+          // OpenAI sentinel to a native Claude stream makes strict clients (such
+          // as Claude Desktop's third-party inference gateway) reject an
+          // otherwise successful response.
+          if (sourceFormat === FORMATS.OPENAI) {
+            const doneOutput = "data: [DONE]\n\n";
+            reqLogger?.appendConvertedChunk?.(doneOutput);
+            controller.enqueue(sharedEncoder.encode(doneOutput));
+          }
 
           if (onStreamComplete) {
             onStreamComplete({
@@ -378,15 +406,17 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, sourceFormat = FORMATS.OPENAI, clientModel = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
+    sourceFormat,
     provider,
     reqLogger,
     model,
     connectionId,
     body,
     onStreamComplete,
-    apiKey
+    apiKey,
+    clientModel
   });
 }

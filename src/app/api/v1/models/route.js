@@ -19,6 +19,7 @@ const UPSTREAM_CONNECTION_RE = /[-_][0-9a-f]{8,}$/i;
 
 // LLM kind sentinel — combos/models with no explicit kind default to LLM
 const LLM_KIND = "llm";
+const UNKNOWN_MODEL_CREATED_AT = "1970-01-01T00:00:00Z";
 
 // Map per-model `type` field (in PROVIDER_MODELS) to service kind.
 // Models without `type` are treated as LLM.
@@ -359,6 +360,25 @@ export async function buildModelsList(kindFilter) {
     }
   }
 
+  // Model aliases are valid client-facing model IDs, not just a way to make
+  // their provider targets appear in discovery. Expose the alias itself when
+  // its target is available so clients can validate the exact ID they will
+  // later send to /v1/messages or /v1/chat/completions.
+  if (kindFilter.includes(LLM_KIND)) {
+    const availableIds = new Set(models.map((model) => model?.id).filter(Boolean));
+    for (const [alias, target] of Object.entries(modelAliases || {})) {
+      const aliasId = typeof alias === "string" ? alias.trim() : "";
+      const targetId = typeof target === "string" ? target.trim() : "";
+      if (!aliasId || !targetId || !availableIds.has(targetId)) continue;
+
+      models.push({
+        id: aliasId,
+        object: "model",
+        owned_by: targetId.includes("/") ? targetId.slice(0, targetId.indexOf("/")) : "alias",
+      });
+    }
+  }
+
   const dedupedModels = [];
   const seenModelIds = new Set();
   for (const model of models) {
@@ -393,8 +413,23 @@ export async function GET(request) {
     const auth = await authenticateApiKey(request, { settings, requiredScope: API_KEY_SCOPES.MODELS_READ });
     if (!auth.ok) return Response.json({ error: { message: auth.message, type: "authentication_error" } }, { status: auth.status });
 
-    const data = await buildModelsList([LLM_KIND]);
-    return Response.json({ object: "list", data }, {
+    const models = await buildModelsList([LLM_KIND]);
+    // Include both OpenAI and Anthropic model fields. OpenAI-compatible clients
+    // continue to use object/owned_by, while Claude Desktop's gateway discovery
+    // recognizes type/display_name/created_at.
+    const data = models.map((model) => ({
+      ...model,
+      type: "model",
+      display_name: model.display_name || model.id,
+      created_at: model.created_at || UNKNOWN_MODEL_CREATED_AT,
+    }));
+    return Response.json({
+      object: "list",
+      data,
+      has_more: false,
+      first_id: data[0]?.id || null,
+      last_id: data[data.length - 1]?.id || null,
+    }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });
   } catch (error) {

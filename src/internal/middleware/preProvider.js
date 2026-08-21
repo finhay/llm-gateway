@@ -61,6 +61,19 @@ function matchesByAction(matches, detectorOverrides, secretsMode, dlpMode) {
   }, {});
 }
 
+// Provider-risk routing should be driven by conversation payloads, not by
+// client-generated system instructions or tool schemas. Rich clients such as
+// Claude Desktop embed version numbers, example identifiers, and opaque tokens
+// in those structural fields, which can resemble PII and must not make every
+// configured provider appear unavailable.
+function isConversationPayload(match) {
+  const location = match?.location || "";
+  return location.startsWith("messages[")
+    || location.startsWith("input[")
+    || location === "input"
+    || location.startsWith("contents[");
+}
+
 export async function preProvider({ body, modelStr, apiKey, settings, request }) {
   const cfg = scanSettings(settings);
   const format = request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null;
@@ -90,7 +103,7 @@ export async function preProvider({ body, modelStr, apiKey, settings, request })
     };
   }
 
-  const classification = classifyDlp(dlpMatches);
+  const classification = classifyDlp(dlpMatches.filter(isConversationPayload));
 
   applyRedactions(nodes, actionGroups.redacted || []);
 
