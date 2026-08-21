@@ -55,6 +55,30 @@ describe("preProvider", () => {
     expect(insertedEvents[0][12]).toBe("redacted");
   });
 
+  it("does not reject a provider for identifiers found only in structural prompts", async () => {
+    const body = {
+      model: "claude-sonnet-m3",
+      system: [
+        { type: "text", text: "Internal client example identifier: 012345678901" },
+      ],
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ name: "example", description: "Generated tool metadata" }],
+    };
+
+    const result = await preProvider({
+      body,
+      modelStr: body.model,
+      apiKey: null,
+      settings: { securityScan: { secretsMode: "enforce", dlpMode: "enforce" } },
+      request: new Request("http://localhost/v1/messages?beta=true"),
+    });
+
+    expect(result.deny).toBeFalsy();
+    expect(result.classification).toBeNull();
+    expect(result.providerFilter).toBeNull();
+    expect(body.system[0].text).toContain("[REDACTED_NATIONAL_ID]");
+  });
+
   it("uses detector action overrides", async () => {
     const body = {
       model: "combo/test",
