@@ -65,7 +65,8 @@ describe("Claude-compatible model discovery", () => {
       id: "claude-sonnet-m3",
       object: "model",
       type: "model",
-      display_name: "claude-sonnet-m3",
+      display_name: "MiniMax M3",
+      alias_for: "minimax/MiniMax-M3",
       created_at: "1970-01-01T00:00:00Z",
     });
     expect(payload).toMatchObject({ object: "list", has_more: false });

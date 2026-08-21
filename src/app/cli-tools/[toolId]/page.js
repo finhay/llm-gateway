@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import OrganizationToolSetup from "../OrganizationToolSetup";
+import CliToolsHeader from "../CliToolsHeader";
 
 // Public member setup flow. It never calls the server-side host configuration APIs.
 export default async function PublicToolDetailPage({ params }) {
@@ -14,12 +15,7 @@ export default async function PublicToolDetailPage({ params }) {
 
   return (
     <div className="min-h-screen w-full bg-bg">
-      <header className="border-b border-border/60 px-6 py-4 lg:px-10">
-        <div className="mx-auto flex max-w-5xl items-center gap-2">
-          <span className="material-symbols-outlined text-[22px] text-primary">terminal</span>
-          <h1 className="text-base font-semibold text-text-main">CLI Tools Setup</h1>
-        </div>
-      </header>
+      <CliToolsHeader />
       <main className="px-6 py-8 lg:px-10">
         <OrganizationToolSetup toolId={toolId} gatewayOrigin={gatewayOrigin} />
       </main>

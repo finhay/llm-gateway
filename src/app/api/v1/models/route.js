@@ -178,6 +178,7 @@ export async function buildModelsList(kindFilter) {
       id: combo.name,
       object: "model",
       owned_by: "combo",
+      display_name: combo.name,
     };
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
@@ -200,6 +201,7 @@ export async function buildModelsList(kindFilter) {
           id: `${alias}/${model.id}`,
           object: "model",
           owned_by: alias,
+          display_name: model.name || model.id,
         });
       }
     }
@@ -218,6 +220,7 @@ export async function buildModelsList(kindFilter) {
         id: `${providerAlias}/${modelId}`,
         object: "model",
         owned_by: providerAlias,
+        display_name: customModel.name || modelId,
       });
     }
   } else {
@@ -240,6 +243,17 @@ export async function buildModelsList(kindFilter) {
       // Build kind lookup for static models so we can filter even when only IDs are exposed
       const staticModelKindById = new Map(
         providerModels.map((m) => [m.id, modelKind(m)])
+      );
+      const staticModelNameById = new Map(
+        providerModels.map((m) => [m.id, m.name || m.id])
+      );
+      const customModelNameById = new Map(
+        customModels
+          .filter((m) => {
+            const alias = m?.providerAlias;
+            return m?.id && (alias === staticAlias || alias === outputAlias || alias === providerId);
+          })
+          .map((m) => [String(m.id).trim(), m.name || String(m.id).trim()])
       );
 
       let rawModelIds = hasExplicitEnabledModels
@@ -315,6 +329,7 @@ export async function buildModelsList(kindFilter) {
           id: `${outputAlias}/${modelId}`,
           object: "model",
           owned_by: outputAlias,
+          display_name: staticModelNameById.get(modelId) || customModelNameById.get(modelId) || modelId,
         });
       }
 
@@ -365,16 +380,19 @@ export async function buildModelsList(kindFilter) {
   // its target is available so clients can validate the exact ID they will
   // later send to /v1/messages or /v1/chat/completions.
   if (kindFilter.includes(LLM_KIND)) {
-    const availableIds = new Set(models.map((model) => model?.id).filter(Boolean));
+    const availableModels = new Map(models.map((model) => [model?.id, model]).filter(([id]) => Boolean(id)));
     for (const [alias, target] of Object.entries(modelAliases || {})) {
       const aliasId = typeof alias === "string" ? alias.trim() : "";
       const targetId = typeof target === "string" ? target.trim() : "";
-      if (!aliasId || !targetId || !availableIds.has(targetId)) continue;
+      const targetModel = availableModels.get(targetId);
+      if (!aliasId || !targetId || !targetModel) continue;
 
       models.push({
         id: aliasId,
         object: "model",
         owned_by: targetId.includes("/") ? targetId.slice(0, targetId.indexOf("/")) : "alias",
+        display_name: targetModel.display_name || targetId.split("/").pop() || targetId,
+        alias_for: targetId,
       });
     }
   }

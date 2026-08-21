@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
@@ -14,11 +14,21 @@ const ensureV1 = (value) => {
 
 const json = (value) => JSON.stringify(value, null, 2);
 
+const subscribeToOrigin = () => () => {};
+
+function useGatewayOrigin(serverOrigin) {
+  return useSyncExternalStore(
+    subscribeToOrigin,
+    () => window.location.origin,
+    () => serverOrigin
+  );
+}
+
 function defaultModelFor(tool) {
   return tool.defaultModels?.[0]?.defaultValue || tool.defaultModels?.[0]?.id || "";
 }
 
-function buildFiles(toolId, endpoint, apiKey, model) {
+function buildFiles(toolId, endpoint, apiKey, model, modelDisplayName) {
   const safeModel = model || "provider/model-id";
   switch (toolId) {
     case "claude":
@@ -63,11 +73,12 @@ function buildFiles(toolId, endpoint, apiKey, model) {
         }),
       }];
     case "cowork": {
+      const displayName = modelDisplayName || safeModel;
       const content = json({
         inferenceProvider: "gateway",
         inferenceGatewayBaseUrl: endpoint,
         inferenceGatewayApiKey: apiKey,
-        inferenceModels: [{ name: safeModel }],
+        inferenceModels: [{ name: safeModel, labelOverride: displayName }],
       });
       return [
         {
@@ -165,9 +176,17 @@ export default function OrganizationToolSetup({ toolId, gatewayOrigin }) {
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState(null);
   const [copiedItem, setCopiedItem] = useState("");
-  const endpoint = ensureV1(gatewayOrigin);
+  // The browser knows the external scheme even when a TLS-terminating reverse
+  // proxy does not forward x-forwarded-proto to the Next.js server.
+  const resolvedGatewayOrigin = useGatewayOrigin(gatewayOrigin);
+  const endpoint = ensureV1(resolvedGatewayOrigin);
+  const selectedModel = models.find((item) => item.id === model);
+  const modelDisplayName = selectedModel?.displayName || model;
 
-  const files = useMemo(() => buildFiles(toolId, endpoint, apiKey, model), [toolId, endpoint, apiKey, model]);
+  const files = useMemo(
+    () => buildFiles(toolId, endpoint, apiKey, model, modelDisplayName),
+    [toolId, endpoint, apiKey, model, modelDisplayName]
+  );
   const preview = files.length ? files.map((file) => {
     const path = filePathForPlatform(file, platform);
     return `# ${path}\n${file.content}`;
@@ -185,9 +204,22 @@ export default function OrganizationToolSetup({ toolId, gatewayOrigin }) {
       const response = await fetch("/v1/models", { headers: { Authorization: `Bearer ${apiKey.trim()}` } });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error?.message || data.error || "The API key was not accepted.");
-      const available = Array.isArray(data.data) ? data.data.map((item) => item.id).filter(Boolean) : [];
+      const available = Array.isArray(data.data)
+        ? data.data
+          .filter((item) => item?.id)
+          .map((item) => ({
+            id: item.id,
+            displayName: item.display_name || item.id,
+            aliasFor: item.alias_for || null,
+          }))
+        : [];
       setModels(available);
-      if (!model && available.length) setModel(available[0]);
+      if (!model && available.length) {
+        const preferredModel = toolId === "cowork"
+          ? available.find((item) => item.aliasFor) || available[0]
+          : available[0];
+        setModel(preferredModel.id);
+      }
       setResult({ type: "success", text: available.length ? `API key verified. ${available.length} models available.` : "API key verified." });
     } catch (error) {
       setModels([]);
@@ -260,8 +292,12 @@ export default function OrganizationToolSetup({ toolId, gatewayOrigin }) {
         </div>
         {models.length ? (
           <select value={model} onChange={(event) => setModel(event.target.value)} className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary">
-            {!models.includes(model) && model && <option value={model}>{model}</option>}
-            {models.map((item) => <option key={item} value={item}>{item}</option>)}
+            {!models.some((item) => item.id === model) && model && <option value={model}>{model}</option>}
+            {models.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.displayName === item.id ? item.id : `${item.displayName} (${item.id})`}
+              </option>
+            ))}
           </select>
         ) : (
           <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="provider/model-id" className="w-full rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm outline-none focus:border-primary" />
