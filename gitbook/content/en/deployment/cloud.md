@@ -62,6 +62,13 @@ export AUTH_COOKIE_SECURE="true"
 | `MACHINE_ID_SALT` | built-in fallback | Salt for stable machine ID hashing in generated gateway keys |
 | `AUTH_COOKIE_SECURE` | `false` | Force secure dashboard cookies behind HTTPS reverse proxy |
 | `ENABLE_REQUEST_LOGS` | `false` | Enable debug request/response logs |
+| `REQUEST_LOG_DIR` | `<working directory>/logs` | Debug request/response log directory |
+| `REQUEST_LOG_MAX_TOTAL_MB` | `256` | Hard limit for the complete debug log directory |
+| `REQUEST_LOG_MAX_SESSION_MB` | `20` | Hard limit for one request log session |
+| `REQUEST_LOG_MAX_FILE_MB` | `5` | Hard limit for one request log file |
+| `REQUEST_LOG_RETENTION_DAYS` | `7` | Delete debug request logs older than this |
+
+`ENABLE_REQUEST_LOGS` is intended for temporary diagnostics. Container stdout/stderr rotation is managed by the runtime, not the application. For Kubernetes, configure kubelet `containerLogMaxSize` and `containerLogMaxFiles` (for example `10Mi` and `5`) and monitor node or ephemeral-storage usage.
 
 ### Step 5: Create Data Directory
 

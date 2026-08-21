@@ -861,6 +861,11 @@ docker stop llm-gateway && docker rm llm-gateway
 | `API_KEY_HASH_SECRET` | falls back to `API_KEY_SECRET` | Optional separate HMAC secret for API key lookup hashes |
 | `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Salt for stable machine ID hashing |
 | `ENABLE_REQUEST_LOGS` | `false` | Enables request/response logs under `logs/` |
+| `REQUEST_LOG_DIR` | `<working directory>/logs` | Directory for detailed request/response logs |
+| `REQUEST_LOG_MAX_TOTAL_MB` | `256` | Hard limit for all detailed request logs |
+| `REQUEST_LOG_MAX_SESSION_MB` | `20` | Hard limit for one request's complete log session |
+| `REQUEST_LOG_MAX_FILE_MB` | `5` | Hard limit for each detailed request-log file |
+| `REQUEST_LOG_RETENTION_DAYS` | `7` | Delete detailed request logs older than this (`0` deletes all on prune) |
 | `AUTH_COOKIE_SECURE` | `false` | Force `Secure` auth cookie (set `true` behind HTTPS) |
 | `REQUIRE_API_KEY` | `false` | Enforce Bearer API key on `/v1/*` routes |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | empty | Optional outbound proxy for upstream provider calls |
@@ -876,7 +881,7 @@ Notes:
 
 - Main app state: `${DATA_DIR}/db/data.sqlite` (SQLite — providers, combos, aliases, keys, settings, usage history)
 - Auto backups: `${DATA_DIR}/db/backups/`
-- Optional request/translator logs: `<repo>/logs/...` when `ENABLE_REQUEST_LOGS=true`
+- Optional request/translator logs: `<repo>/logs/...` when `ENABLE_REQUEST_LOGS=true`; credentials are redacted and the directory is bounded by the `REQUEST_LOG_*` retention and size limits.
 
 </details>
 
