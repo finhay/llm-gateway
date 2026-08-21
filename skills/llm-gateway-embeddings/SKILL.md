@@ -5,7 +5,7 @@ description: Generate vector embeddings via LLM Gateway /v1/embeddings using Ope
 
 # LLM Gateway — Embeddings
 
-Requires `LLM_GATEWAY_URL` (and `LLM_GATEWAY_KEY` if auth enabled). See https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway/SKILL.md for setup.
+Requires `LLM_GATEWAY_URL` (and `LLM_GATEWAY_KEY` if auth enabled). See https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway/SKILL.md for setup.
 
 ## Discover
 
