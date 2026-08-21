@@ -12,8 +12,10 @@ function getStatus(status) {
   return { label: "Not configured", cls: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" };
 }
 
-export default function ToolSummaryCard({ toolId, tool, status, basePath = "/dashboard/cli-tools" }) {
-  const s = getStatus(status);
+export default function ToolSummaryCard({ toolId, tool, status, basePath = "/dashboard/cli-tools", publicMode = false }) {
+  const s = publicMode
+    ? { label: "Setup", cls: "bg-primary/10 text-primary" }
+    : getStatus(status);
   return (
     <Link href={`${basePath}/${toolId}`} className="block">
       <Card padding="sm" className="h-full overflow-hidden hover:border-primary/50 transition-colors cursor-pointer">

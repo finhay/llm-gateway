@@ -8,11 +8,12 @@ import ToolSummaryCard from "./components/ToolSummaryCard";
 
 const ALL_STATUSES_URL = "/api/cli-tools/all-statuses";
 
-export default function CLIToolsPageClient({ machineId, basePath = "/dashboard/cli-tools" }) {
-  const [loading, setLoading] = useState(true);
+export default function CLIToolsPageClient({ machineId, basePath = "/dashboard/cli-tools", publicMode = false }) {
+  const [loading, setLoading] = useState(!publicMode);
   const [toolStatuses, setToolStatuses] = useState({});
 
   useEffect(() => {
+    if (publicMode) return;
     let mounted = true;
     (async () => {
       try {
@@ -25,7 +26,7 @@ export default function CLIToolsPageClient({ machineId, basePath = "/dashboard/c
       }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [publicMode]);
 
   if (loading) {
     return (
@@ -47,10 +48,10 @@ export default function CLIToolsPageClient({ machineId, basePath = "/dashboard/c
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-1 sm:px-0">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {regularTools.map(([toolId, tool]) => (
-          <ToolSummaryCard key={toolId} toolId={toolId} tool={tool} status={toolStatuses[toolId]} basePath={basePath} />
+          <ToolSummaryCard key={toolId} toolId={toolId} tool={tool} status={toolStatuses[toolId]} basePath={basePath} publicMode={publicMode} />
         ))}
       </div>
-      <div className="flex flex-col gap-3 sm:gap-4">
+      {!publicMode && <div className="flex flex-col gap-3 sm:gap-4">
         <div className="flex items-center gap-2 px-1">
           <span className="material-symbols-outlined text-[18px] text-primary">security</span>
           <h2 className="text-sm font-semibold text-text-main">MITM Tools</h2>
@@ -60,7 +61,7 @@ export default function CLIToolsPageClient({ machineId, basePath = "/dashboard/c
             <MitmLinkCard key={toolId} tool={tool} />
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
