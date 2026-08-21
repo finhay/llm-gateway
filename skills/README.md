@@ -8,21 +8,21 @@ Drop-in skills for any AI agent (Claude, Cursor, ChatGPT, custom SDK). Just **co
 
 | Capability | Copy link below and paste to your AI |
 |---|---|
-| **Entry / Setup** (start here) | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway/SKILL.md |
-| Chat / code-gen | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway-chat/SKILL.md |
-| Image generation | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway-image/SKILL.md |
-| Text-to-speech | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway-tts/SKILL.md |
-| Speech-to-text | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway-stt/SKILL.md |
-| Embeddings | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway-embeddings/SKILL.md |
-| Web search | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway-web-search/SKILL.md |
-| Web fetch (URL → markdown) | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway-web-fetch/SKILL.md |
+| **Entry / Setup** (start here) | https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway/SKILL.md |
+| Chat / code-gen | https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway-chat/SKILL.md |
+| Image generation | https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway-image/SKILL.md |
+| Text-to-speech | https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway-tts/SKILL.md |
+| Speech-to-text | https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway-stt/SKILL.md |
+| Embeddings | https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway-embeddings/SKILL.md |
+| Web search | https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway-web-search/SKILL.md |
+| Web fetch (URL → markdown) | https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway-web-fetch/SKILL.md |
 
 ## How to use
 
 Paste to your AI (Claude, Cursor, ChatGPT, …):
 
 ```
-Read this skill and use it: https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway/SKILL.md
+Read this skill and use it: https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway/SKILL.md
 ```
 
 Then ask normally — *"generate an image of a cat"*, *"transcribe this URL"*, etc.
@@ -38,5 +38,5 @@ Verify: `curl $LLM_GATEWAY_URL/api/health` → `{"ok":true}`.
 
 ## Links
 
-- Source: https://github.com/decolua/9router
+- Source: https://github.com/finhay/llm-gateway
 - Dashboard: https://llm-gateway.com

@@ -5,7 +5,7 @@ description: Speech-to-text via LLM Gateway /v1/audio/transcriptions using OpenA
 
 # LLM Gateway — Speech-to-Text
 
-Requires `LLM_GATEWAY_URL` (and `LLM_GATEWAY_KEY` if auth enabled). See https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/llm-gateway/SKILL.md for setup.
+Requires `LLM_GATEWAY_URL` (and `LLM_GATEWAY_KEY` if auth enabled). See https://raw.githubusercontent.com/finhay/llm-gateway/refs/heads/master/skills/llm-gateway/SKILL.md for setup.
 
 ## Discover
 
