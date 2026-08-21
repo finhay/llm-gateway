@@ -8,11 +8,18 @@ import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 
 const originalDataDir = process.env.DATA_DIR;
+const originalNodeEnv = process.env.NODE_ENV;
+const originalPeerToken = process.env.LLM_GATEWAY_PEER_TOKEN;
 let tempDir;
 let db;
 let auth;
 let getConsistentMachineId;
 let key;
+
+function restoreEnv(name, value) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
 
 beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "llm-gateway-attribution-"));
@@ -29,6 +36,8 @@ afterAll(() => {
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
+  restoreEnv("NODE_ENV", originalNodeEnv);
+  restoreEnv("LLM_GATEWAY_PEER_TOKEN", originalPeerToken);
 });
 
 const request = (rawKey) =>
@@ -127,6 +136,53 @@ describe("authenticateApiKey — attribution vs enforcement", () => {
 
       expect(result.ok).toBe(true);
       expect(result.internal).toBe(true);
+    });
+
+    it("accepts a production loopback request even when Next exposes the public URL", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.LLM_GATEWAY_PEER_TOKEN = "test-peer-token";
+      try {
+        const internalRequest = new Request("https://llm-gateway.example.com/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "x-9r-internal-token": await getConsistentMachineId(),
+            "x-llm-gateway-peer-token": "test-peer-token",
+            "x-llm-gateway-real-ip": "127.0.0.1",
+          },
+        });
+        const result = await auth.authenticateApiKey(internalRequest, {
+          requiredScope: auth.API_KEY_SCOPES.CHAT_WRITE,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.internal).toBe(true);
+      } finally {
+        restoreEnv("NODE_ENV", originalNodeEnv);
+        restoreEnv("LLM_GATEWAY_PEER_TOKEN", originalPeerToken);
+      }
+    });
+
+    it("rejects spoofed production loopback headers without the trusted peer token", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.LLM_GATEWAY_PEER_TOKEN = "test-peer-token";
+      try {
+        const spoofedRequest = new Request("https://llm-gateway.example.com/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "x-9r-internal-token": await getConsistentMachineId(),
+            "x-llm-gateway-real-ip": "127.0.0.1",
+          },
+        });
+        const result = await auth.authenticateApiKey(spoofedRequest, {
+          requiredScope: auth.API_KEY_SCOPES.CHAT_WRITE,
+        });
+
+        expect(result.ok).toBe(false);
+        expect(result.status).toBe(401);
+      } finally {
+        restoreEnv("NODE_ENV", originalNodeEnv);
+        restoreEnv("LLM_GATEWAY_PEER_TOKEN", originalPeerToken);
+      }
     });
 
     it("rejects a revoked key", async () => {

@@ -61,6 +61,8 @@ export async function handleChat(request, clientRawRequest = null) {
   if (authHeader && apiKey) {
     const masked = log.maskKey(apiKey);
     log.debug("AUTH", `API Key: ${masked}`);
+  } else if (request.headers.has("x-9r-internal-token")) {
+    log.debug("AUTH", "Internal loopback credentials provided");
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
