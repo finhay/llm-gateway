@@ -1,9 +1,9 @@
 import { getProviderConnections, validateApiKey, updateApiKeyLastUsed, updateProviderConnection, getSettings } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { APP_CONFIG } from "@/shared/constants/config";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { getConsistentMachineId } from "@/shared/utils/machineId";
 import * as log from "../utils/logger.js";
 
 export const API_KEY_SCOPES = Object.freeze({
@@ -26,9 +26,9 @@ export const API_KEY_SCOPES = Object.freeze({
 const rateLimiter = globalThis._apiKeyRateLimiter || new Map();
 globalThis._apiKeyRateLimiter = rateLimiter;
 
-function isInternalRequest(request) {
+async function isInternalRequest(request) {
   const token = request.headers.get("x-9r-internal-token");
-  if (!token || token !== APP_CONFIG.machineId) return false;
+  if (!token || token !== await getConsistentMachineId()) return false;
   try {
     const url = new URL(request.url);
     return url.hostname === "127.0.0.1" || url.hostname === "localhost";
@@ -370,7 +370,7 @@ export async function authenticateApiKey(request, { settings = null, requiredSco
     if (keyRecord) await updateApiKeyLastUsed(keyRecord.id);
     return { ok: true, keyRecord, rawKey, enforced: false };
   }
-  if (isInternalRequest(request)) {
+  if (await isInternalRequest(request)) {
     return { ok: true, keyRecord: null, rawKey: null, internal: true, enforced: false };
   }
   if (!rawKey) {
