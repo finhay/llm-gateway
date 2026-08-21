@@ -9,6 +9,23 @@ export { COLORS, formatSSE };
 // sharedEncoder is stateless — safe to share across streams
 const sharedEncoder = new TextEncoder();
 
+function normalizeClaudeResponseIdentity(item, sourceFormat, clientModel) {
+  if (sourceFormat !== FORMATS.CLAUDE || item?.type !== "message_start" || !item.message) {
+    return false;
+  }
+
+  let changed = false;
+  if (clientModel && item.message.model !== clientModel) {
+    item.message.model = clientModel;
+    changed = true;
+  }
+  if (typeof item.message.id === "string" && !item.message.id.startsWith("msg_")) {
+    item.message.id = `msg_${item.message.id}`;
+    changed = true;
+  }
+  return changed;
+}
+
 /**
  * Stream modes
  */
@@ -92,16 +109,7 @@ export function createSSEStream(options = {}) {
               // name and a provider-native message ID. Native Claude clients
               // validate the response against the selected client-facing model
               // and expect Anthropic-style msg_ identifiers.
-              if (sourceFormat === FORMATS.CLAUDE && parsed.type === "message_start" && parsed.message) {
-                if (clientModel && parsed.message.model !== clientModel) {
-                  parsed.message.model = clientModel;
-                  fieldsInjected = true;
-                }
-                if (typeof parsed.message.id === "string" && !parsed.message.id.startsWith("msg_")) {
-                  parsed.message.id = `msg_${parsed.message.id}`;
-                  fieldsInjected = true;
-                }
-              }
+              fieldsInjected = normalizeClaudeResponseIdentity(parsed, sourceFormat, clientModel) || fieldsInjected;
               if (parsed.choices !== undefined) {
                 if (!parsed.object) { parsed.object = "chat.completion.chunk"; fieldsInjected = true; }
                 if (!parsed.created) { parsed.created = Math.floor(Date.now() / 1000); fieldsInjected = true; }
@@ -193,9 +201,13 @@ export function createSSEStream(options = {}) {
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate
         // For other formats: done=true is the [DONE] sentinel, skip
         if (parsed && parsed.done && targetFormat !== FORMATS.OLLAMA) {
-          const output = "data: [DONE]\n\n";
-          reqLogger?.appendConvertedChunk?.(output);
-          controller.enqueue(sharedEncoder.encode(output));
+          // Anthropic streams end at message_stop followed by EOF. Forwarding
+          // the OpenAI sentinel makes strict Claude clients reject the stream.
+          if (sourceFormat !== FORMATS.CLAUDE) {
+            const output = "data: [DONE]\n\n";
+            reqLogger?.appendConvertedChunk?.(output);
+            controller.enqueue(sharedEncoder.encode(output));
+          }
           continue;
         }
 
@@ -253,6 +265,7 @@ export function createSSEStream(options = {}) {
 
         if (translated?.length > 0) {
           for (const item of translated) {
+            normalizeClaudeResponseIdentity(item, sourceFormat, clientModel);
             // Filter empty chunks
             if (!hasValuableContent(item, sourceFormat)) {
               continue; // Skip this empty chunk
@@ -338,6 +351,7 @@ export function createSSEStream(options = {}) {
 
             if (translated?.length > 0) {
               for (const item of translated) {
+                normalizeClaudeResponseIdentity(item, sourceFormat, clientModel);
                 const output = formatSSE(item, sourceFormat);
                 reqLogger?.appendConvertedChunk?.(output);
                 controller.enqueue(sharedEncoder.encode(output));
@@ -357,15 +371,18 @@ export function createSSEStream(options = {}) {
 
         if (flushed?.length > 0) {
           for (const item of flushed) {
+            normalizeClaudeResponseIdentity(item, sourceFormat, clientModel);
             const output = formatSSE(item, sourceFormat);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
           }
         }
 
-        const doneOutput = "data: [DONE]\n\n";
-        reqLogger?.appendConvertedChunk?.(doneOutput);
-        controller.enqueue(sharedEncoder.encode(doneOutput));
+        if (sourceFormat !== FORMATS.CLAUDE) {
+          const doneOutput = "data: [DONE]\n\n";
+          reqLogger?.appendConvertedChunk?.(doneOutput);
+          controller.enqueue(sharedEncoder.encode(doneOutput));
+        }
 
         if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
           state.usage = estimateUsage(body, totalContentLength, sourceFormat);
@@ -390,7 +407,7 @@ export function createSSEStream(options = {}) {
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, clientModel = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -402,7 +419,8 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     connectionId,
     body,
     onStreamComplete,
-    apiKey
+    apiKey,
+    clientModel
   });
 }
 

@@ -7,7 +7,8 @@ vi.mock("../../src/lib/usageDb.js", () => ({
 }));
 
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { createPassthroughStreamWithLogger } from "../../open-sse/utils/stream.js";
+import "../../open-sse/translator/response/openai-to-claude.js";
+import { createPassthroughStreamWithLogger, createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
 
 async function passThrough(source, format, { clientModel = null, onStreamComplete = null } = {}) {
   const input = new ReadableStream({
@@ -27,6 +28,33 @@ async function passThrough(source, format, { clientModel = null, onStreamComplet
       onStreamComplete,
       null,
       format,
+      clientModel,
+    ),
+  );
+
+  return new Response(output).text();
+}
+
+async function translateOpenAIToClaude(source, clientModel) {
+  const input = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(source));
+      controller.close();
+    },
+  });
+
+  const output = input.pipeThrough(
+    createSSETransformStreamWithLogger(
+      FORMATS.OPENAI,
+      FORMATS.CLAUDE,
+      "deepseek",
+      null,
+      null,
+      "deepseek-v4-pro",
+      null,
+      null,
+      null,
+      null,
       clientModel,
     ),
   );
@@ -88,5 +116,25 @@ describe("passthrough SSE termination", () => {
       expect.objectContaining({ prompt_tokens: 38, completion_tokens: 2 }),
       expect.any(Number),
     );
+  });
+});
+
+describe("translated SSE termination", () => {
+  it("ends OpenAI-to-Claude streams at message_stop with Claude response identity", async () => {
+    const source = [
+      'data: {"id":"chatcmpl-deepseek123","model":"deepseek-v4-pro","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}',
+      'data: {"id":"chatcmpl-deepseek123","model":"deepseek-v4-pro","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}',
+      'data: {"id":"chatcmpl-deepseek123","model":"deepseek-v4-pro","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":1}}',
+      "data: [DONE]",
+      "",
+      "",
+    ].join("\n");
+
+    const result = await translateOpenAIToClaude(source, "claude-sonnet-ds");
+
+    expect(result).toContain('"id":"msg_deepseek123"');
+    expect(result).toContain('"model":"claude-sonnet-ds"');
+    expect(result).toContain('event: message_stop\ndata: {"type":"message_stop"}');
+    expect(result).not.toContain("[DONE]");
   });
 });
