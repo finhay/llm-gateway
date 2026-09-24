@@ -1,0 +1,245 @@
+// ============================================================================
+// cicd_v2/Jenkinsfile — TEMPLATE CHUẨN DÙNG CHUNG CHO MỌI APP (môi trường dev)
+//
+// Cách dùng:
+//   1. Copy nội dung file này vào repo app mới tại đường dẫn: cicd_v2/Jenkinsfile
+//   2. Chỉ sửa các giá trị trong khối environment{} bên dưới.
+//   3. KHÔNG chỉnh sửa bất kỳ phần logic pipeline nào phía dưới khối environment.
+// ============================================================================
+
+pipeline {
+    agent any
+
+    environment {
+        // ====================================================================
+        // CHỈ SỬA CÁC THÔNG SỐ DƯỚI ĐÂY KHI ONBOARD APP MỚI
+        // ====================================================================
+        
+        // 1. Thông tin Kubernetes & Namespace
+        K8SCLS                    = 'devk8scls2'
+        WORKSPACE_NS              = 'develop'
+
+        // 2. Thông tin Source Code Repo
+        SOURCE_BRANCH             = 'develop'                               // Nhánh source code sẽ trigger build
+        SOURCE_REPO_URL           = 'https://github.com/finhay/llm-gateway/' // Link repo ứng dụng
+        SOURCE_REPO_CREDENTIAL_ID = '11cc197e-6e55-4ffd-97ed-d78d135656dc'  // Credential ID để checkout source code
+
+        // 3. Thông tin Build & Docker Image
+        DOCKERFILE                = 'Dockerfile'                            // dockerfile của app
+        IMAGES                    = 'llm-gateway'                         // Tên image trên registry (VD: payment-service)
+        URL_PRIVATE_REGISTRY      = 'dockerhub.finhay.lan'                 // Private Registry URL
+
+        // 4. Thông tin Deployment & GitOps Repository
+        DEPLOYMENT                = 'develop-llm-gateway'                 // Tên container/deployment trong deployment.yaml
+        APP_FOLDER                = 'llm-gateway'                         // Tên thư mục chứa manifest app trong repo GitOps
+        GITOPS_REPO_HOST          = 'github.com/finhay-pro/fhsc-k8s-deploy-dev.git'
+        GITOPS_CREDENTIAL_ID      = 'gitops-deploy-repo-token-dev'          // Credential ID của GitOps repo
+
+        // ====================================================================
+        // KHÔNG SỬA GÌ THÊM BÊN DƯỚI DÒNG NÀY
+        // ====================================================================
+    }
+
+    stages {
+
+        stage('Checkout source HEAD') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${SOURCE_BRANCH}"]],
+                    userRemoteConfigs: [[
+                        url: "${SOURCE_REPO_URL}",
+                        credentialsId: "${SOURCE_REPO_CREDENTIAL_ID}"
+                    ]]
+                ])
+                sh 'git log -1 --oneline'
+            }
+        }
+
+        stage('Load env') {
+            steps {
+                script {
+                    try {
+                        if ("${WORKSPACE_NS}" == "develop") {
+                            sh '''
+set -eu
+if [ -f "./env/develop.env" ]; then
+    sudo cp ./env/develop.env ./.env
+    ls -lah .env
+else
+    echo "[INFO] No ./env/develop.env found, skipping environment file copy."
+fi
+                            '''
+                        }
+                    }
+                    catch (err) {
+                        currentBuild.result = "FAILED"
+                        throw err
+                    }
+                }
+            }
+        }
+
+        stage('Build and upload image') {
+            steps {
+                script {
+                    try {
+                        sh '''
+set -eu
+
+echo "[INFO] Building Docker image: ${IMAGES}:${BUILD_NUMBER}"
+
+sudo docker build -t "${IMAGES}:${BUILD_NUMBER}" --build-arg WORKSPACE="${WORKSPACE_NS}" .
+sudo docker tag "${IMAGES}:${BUILD_NUMBER}" "${URL_PRIVATE_REGISTRY}/${IMAGES}:${BUILD_NUMBER}"
+sudo docker push "${URL_PRIVATE_REGISTRY}/${IMAGES}:${BUILD_NUMBER}"
+
+sudo docker images "${URL_PRIVATE_REGISTRY}/${IMAGES}" --digests || true
+                        '''
+                    }
+                    catch (err) {
+                        currentBuild.result = "FAILED"
+                        throw err
+                    }
+                }
+            }
+        }
+
+        stage('Promote to Deployment') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${GITOPS_CREDENTIAL_ID}",
+                    usernameVariable: 'GITOPS_GIT_USER',
+                    passwordVariable: 'GITOPS_GIT_TOKEN'
+                )]) {
+                    script {
+                        try {
+                            sh '''
+set -eu
+
+FULL_IMAGE="${URL_PRIVATE_REGISTRY}/${IMAGES}:${BUILD_NUMBER}"
+CONTAINER_NAME="${DEPLOYMENT}"
+DEPLOY_REPO_LOCAL_PATH="/var/lib/jenkins/workspace/fhsc-k8s-deploy-dev"
+DEPLOY_REPO_BRANCH="main"
+DEPLOYMENT_FILE="${DEPLOY_REPO_LOCAL_PATH}/fhsc-dev-cls1/${WORKSPACE_NS}/${APP_FOLDER}/deployment.yaml"
+
+echo "[INFO] Updating image to ${FULL_IMAGE} for deployment '${DEPLOYMENT}' (namespace: ${WORKSPACE_NS})"
+
+if ! command -v yq >/dev/null 2>&1; then
+  echo "ERROR: Missing 'yq' tool on Jenkins agent" >&2
+  exit 1
+fi
+
+LOCK_DIR="/tmp/fhsc-k8s-deploy-dev.lockdir"
+LOCK_WAIT=0
+
+echo "[INFO] Acquiring GitOps repo lock: ${LOCK_DIR}"
+while ! mkdir "${LOCK_DIR}" 2>/dev/null; do
+  LOCK_WAIT=$((LOCK_WAIT + 5))
+  if [ "${LOCK_WAIT}" -ge 300 ]; then
+    echo "ERROR: Timeout waiting for GitOps repo lock" >&2
+    exit 1
+  fi
+  echo "[INFO] Waiting for lock... (${LOCK_WAIT}s)"
+  sleep 5
+done
+
+# Fix bảo mật: Dùng GIT_ASKPASS thay vì nhúng token trực tiếp vào remote URL
+ASKPASS="$(mktemp)"
+trap 'rm -f "${ASKPASS}"; rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT INT TERM
+
+cat > "${ASKPASS}" <<'EOS'
+#!/bin/sh
+case "$1" in Username*) echo "${GITOPS_GIT_USER}" ;; *) echo "${GITOPS_GIT_TOKEN}" ;; esac
+EOS
+chmod 700 "${ASKPASS}"
+export GIT_ASKPASS="${ASKPASS}" GIT_TERMINAL_PROMPT=0
+
+if [ -d "${DEPLOY_REPO_LOCAL_PATH}/.git" ]; then
+  cd "${DEPLOY_REPO_LOCAL_PATH}"
+  git remote set-url origin "https://${GITOPS_REPO_HOST}"
+  git fetch origin "${DEPLOY_REPO_BRANCH}"
+  git checkout "${DEPLOY_REPO_BRANCH}"
+  git reset --hard "origin/${DEPLOY_REPO_BRANCH}"
+  git clean -fd
+else
+  git clone "https://${GITOPS_REPO_HOST}" "${DEPLOY_REPO_LOCAL_PATH}"
+  cd "${DEPLOY_REPO_LOCAL_PATH}"
+fi
+
+if [ ! -f "${DEPLOYMENT_FILE}" ]; then
+  echo "ERROR: deployment.yaml not found at path: ${DEPLOYMENT_FILE}" >&2
+  exit 1
+fi
+
+echo "[INFO] Current container image specification:"
+yq e '.spec.template.spec.containers[] | {"name": .name, "image": .image}' "${DEPLOYMENT_FILE}"
+
+FOUND_CONTAINER="$(
+  CONTAINER_NAME="${CONTAINER_NAME}" \
+  yq e -r '.spec.template.spec.containers[] | select(.name == strenv(CONTAINER_NAME)) | .name' \
+  "${DEPLOYMENT_FILE}"
+)"
+
+if [ -z "${FOUND_CONTAINER}" ]; then
+  echo "ERROR: Container '${CONTAINER_NAME}' not found in ${DEPLOYMENT_FILE}" >&2
+  exit 1
+fi
+
+echo "[INFO] Updating image specification -> ${FULL_IMAGE}"
+CONTAINER_NAME="${CONTAINER_NAME}" FULL_IMAGE="${FULL_IMAGE}" \
+yq e -i '(.spec.template.spec.containers[] | select(.name == strenv(CONTAINER_NAME)).image) = strenv(FULL_IMAGE)' \
+  "${DEPLOYMENT_FILE}"
+
+echo "[INFO] Updated container image specification:"
+yq e '.spec.template.spec.containers[] | {"name": .name, "image": .image}' "${DEPLOYMENT_FILE}"
+
+if git diff --quiet -- "fhsc-dev-cls1/${WORKSPACE_NS}/${APP_FOLDER}"; then
+  echo "[INFO] No changes detected in deployment manifests. Skipping commit."
+  exit 0
+fi
+
+git config user.name "jenkins-dev-bot"
+git config user.email "jenkins-dev-bot@finhay.local"
+git add "fhsc-dev-cls1/${WORKSPACE_NS}/${APP_FOLDER}/deployment.yaml"
+git commit -m "chore(${WORKSPACE_NS}): update ${APP_FOLDER} image tag to ${BUILD_NUMBER}"
+git pull --rebase origin "${DEPLOY_REPO_BRANCH}"
+git push origin "${DEPLOY_REPO_BRANCH}"
+
+echo "[DONE] GitOps repository updated successfully. ArgoCD will auto-sync shortly."
+                            '''
+                        }
+                        catch (err) {
+                            currentBuild.result = "FAILED"
+                            throw err
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                env.GIT_COMMIT_MSG = sh(script: 'git log -1 --pretty=%s "${GIT_COMMIT}"', returnStdout: true).trim()
+                env.GIT_AUTHOR     = sh(script: 'git log -1 --pretty=%an "${GIT_COMMIT}"', returnStdout: true).trim()
+
+                def buildStatus = currentBuild.result ?: 'SUCCESS'
+
+                withEnv([
+                    "NOTI_STATUS=${buildStatus}",
+                    "NOTI_ENV=fhsc-dev-cls1-${env.WORKSPACE_NS}"
+                ]) {
+                    sh '''
+if [ -f "./cicd_v2/send-noti-to-ggchat.sh" ]; then
+    bash ./cicd_v2/send-noti-to-ggchat.sh "${NOTI_STATUS}" "${BUILD_NUMBER}" "${IMAGES}" \
+      "${NOTI_ENV}" "${GIT_COMMIT_MSG}" "${BUILD_URL}" "${GIT_AUTHOR}" "${SOURCE_BRANCH}"
+else
+    echo "[WARN] Notification script ./cicd_v2/send-noti-to-ggchat.sh not found."
+fi
+                    '''
+                }
+            }
+        }
+    }
+}
