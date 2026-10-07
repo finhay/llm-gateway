@@ -3,7 +3,8 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
-import { getSmartRoutingConfig } from "@/lib/smartRouting/defaults.js";
+import { getSmartRoutingConfig, validateSmartRoutingConfig } from "@/lib/smartRouting/defaults.js";
+import { resetCandidateCache } from "@/sse/services/candidateDiscovery.js";
 import { DECISION_PROVIDERS, getDecisionProvider, getDecisionKeyStatus } from "@/lib/smartRouting/providers.js";
 
 export const dynamic = "force-dynamic";
@@ -87,7 +88,10 @@ export async function PATCH(request) {
             { status: 400 }
           );
         }
+        const problem = validateSmartRoutingConfig(next);
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 });
         body.smartRouting = next;
+        resetCandidateCache();
       }
 
       // Keys are write-only and stored per provider. A string sets one, null removes it,

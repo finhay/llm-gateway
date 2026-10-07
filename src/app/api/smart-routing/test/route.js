@@ -5,10 +5,15 @@ import { getDecisionProvider, resolveDecisionApiKey, DECISION_PROVIDERS } from "
 
 export const dynamic = "force-dynamic";
 
-const SAMPLE_TEXT = "Write a SQL query that returns the ten customers with the highest total order value.";
+// Two stand-in candidates are enough to prove the key works with the provider
+const SAMPLE_EXCERPT = { system: "", turns: [{ role: "user", text: "Write a SQL query that returns the ten customers with the highest total order value." }] };
+const SAMPLE_CANDIDATES = [
+  { id: "sample/small-fast", qualityTier: "low", latencyTier: "low", costTier: "low", capabilities: { tools: true }, description: "Small, cheap and fast" },
+  { id: "sample/large-strong", qualityTier: "high", latencyTier: "high", costTier: "high", capabilities: { tools: true }, description: "Large, slow and expensive, strongest reasoning" },
+];
 
 // POST /api/smart-routing/test  { provider?, apiKey? }
-// Checks that a key works with its provider by running one real classification.
+// Checks that a key works with its provider by running one real decision on stand-in candidates.
 // The key is used for this call only (not saved) and is never echoed back.
 export async function POST(request) {
   try {
@@ -36,8 +41,11 @@ export async function POST(request) {
 
     const started = Date.now();
     try {
-      const result = await provider.classify({
-        text: SAMPLE_TEXT,
+      const result = await provider.decide({
+        excerpt: SAMPLE_EXCERPT,
+        candidates: SAMPLE_CANDIDATES,
+        efforts: cfg.efforts,
+        weights: cfg.weights,
         apiKey: resolved.key,
         baseUrl: cfg.baseUrl || process.env[provider.envBaseUrlKey] || undefined,
         model: cfg.model || provider.defaultModel,
@@ -47,7 +55,8 @@ export async function POST(request) {
         ok: true,
         provider: provider.id,
         keySource: resolved.source,
-        tag: result.tag,
+        choice: result.choice,
+        effort: result.effort,
         confidence: result.confidence,
         ms: Date.now() - started,
       });
