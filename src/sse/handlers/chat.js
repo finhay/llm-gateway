@@ -21,6 +21,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { preProvider } from "@/internal/middleware/preProvider.js";
+import { isSmartRoutingRequest, resolveSmartRoute, withRouteHeaders } from "@/lib/smartRouting/index.js";
 
 /**
  * Handle chat completion request
@@ -47,7 +48,7 @@ export async function handleChat(request, clientRawRequest = null) {
   }
   // Log request endpoint and model
   const url = new URL(request.url);
-  const modelStr = body.model;
+  let modelStr = body.model;
 
   // Count messages (support both messages[] and input[] formats)
   const msgCount = body.messages?.length || body.input?.length || 0;
@@ -92,6 +93,20 @@ export async function handleChat(request, clientRawRequest = null) {
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
+  // Smart routing: the virtual model ("auto") is rewritten to a combo / model by prompt tag.
+  // Runs after DLP and bypass so only requests that will actually reach a provider are classified.
+  let smartRoute = null;
+  if (isSmartRoutingRequest(settings, modelStr)) {
+    const route = await resolveSmartRoute({ body, settings, keyRecord: auth.keyRecord });
+    log.info("SMART_ROUTING", `${modelStr} -> ${route.model || "(none)"} | tag=${route.tag || "-"}${route.complexity ? `:${route.complexity}` : ""} | conf=${route.confidence ?? "-"} | ${route.source} | ${route.ms}ms`);
+    if (!route.model) {
+      return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Smart routing found no target model; set smartRouting.defaultTarget");
+    }
+    modelStr = route.model;
+    smartRoute = route;
+  }
+  const finish = (response) => (smartRoute ? withRouteHeaders(response, smartRoute) : response);
+
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
@@ -102,7 +117,7 @@ export async function handleChat(request, clientRawRequest = null) {
     
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-    return handleComboChat({
+    return finish(await handleComboChat({
       body,
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, providerFilter),
@@ -110,11 +125,11 @@ export async function handleChat(request, clientRawRequest = null) {
       comboName: modelStr,
       comboStrategy,
       comboStickyLimit
-    });
+    }));
   }
 
   // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, providerFilter);
+  return finish(await handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, providerFilter));
 }
 
 /**
