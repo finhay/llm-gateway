@@ -29,6 +29,7 @@ export default function SmartRoutingCard() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
+  const [toggleStatus, setToggleStatus] = useState({ type: "", message: "" });
   const [testStatus, setTestStatus] = useState({ type: "", message: "" });
 
   const load = async () => {
@@ -51,52 +52,55 @@ export default function SmartRoutingCard() {
   const providerKey = keyStatus[form.provider];
   const providerLabel = providerKey?.label || form.provider;
 
-  const save = async () => {
+  // `overrides` lets the toggle save a flipped `enabled` without waiting for a state update
+  const save = async (overrides = {}, report = setStatus) => {
+    const values = { ...form, ...overrides };
     let routes;
     try {
       routes = JSON.parse(routesText || "{}");
       if (!routes || typeof routes !== "object" || Array.isArray(routes)) throw new Error("not an object");
     } catch {
-      setStatus({ type: "error", message: 'Routes must be a JSON object, e.g. {"code": "code-cheap"}' });
+      report({ type: "error", message: 'Routes must be a JSON object, e.g. {"code": "code-cheap"}' });
       return;
     }
-    const minConfidence = Number(form.minConfidence);
+    const minConfidence = Number(values.minConfidence);
     if (!(minConfidence >= 0 && minConfidence <= 1)) {
-      setStatus({ type: "error", message: "Minimum confidence must be between 0 and 1" });
+      report({ type: "error", message: "Minimum confidence must be between 0 and 1" });
       return;
     }
-    if (form.enabled && !form.defaultTarget.trim()) {
-      setStatus({ type: "error", message: "Set a default target before enabling: it is used whenever classification fails" });
+    if (values.enabled && !values.defaultTarget.trim()) {
+      report({ type: "error", message: "Set a default target before enabling: it is used whenever classification fails" });
       return;
     }
 
     const payload = {
       smartRouting: {
-        enabled: form.enabled,
-        virtualModel: form.virtualModel.trim() || "auto",
-        provider: form.provider,
-        defaultTarget: form.defaultTarget.trim(),
+        enabled: values.enabled,
+        virtualModel: values.virtualModel.trim() || "auto",
+        provider: values.provider,
+        defaultTarget: values.defaultTarget.trim(),
         minConfidence,
         routes,
       },
     };
     // An empty field keeps the stored key; only a typed value replaces it
-    if (apiKey.trim()) payload.decisionApiKeys = { [form.provider]: apiKey.trim() };
+    if (apiKey.trim()) payload.decisionApiKeys = { [values.provider]: apiKey.trim() };
 
     setSaving(true);
-    setStatus({ type: "", message: "" });
+    report({ type: "", message: "" });
     try {
       const res = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) {
-        setStatus({ type: "error", message: data.error || "Failed to save" });
+        report({ type: "error", message: data.error || "Failed to save" });
         return;
       }
       setApiKey("");
+      setForm((prev) => ({ ...prev, ...overrides }));
       setKeyStatus(data.decisionKeyStatus || {});
-      setStatus({ type: "success", message: "Saved" });
+      report({ type: "success", message: "Saved" });
     } catch (error) {
-      setStatus({ type: "error", message: error.message });
+      report({ type: "error", message: error.message });
     } finally {
       setSaving(false);
     }
@@ -133,6 +137,17 @@ export default function SmartRoutingCard() {
     }
   };
 
+  const toggleEnabled = async () => {
+    setToggleStatus({ type: "", message: "" });
+    const enabled = !form.enabled;
+    if (enabled && !form.defaultTarget.trim()) {
+      setToggleStatus({ type: "error", message: "Not enabled: fill in the Default target below first, then switch on." });
+      return;
+    }
+    // Saves immediately, like the other switches on this page
+    await save({ enabled }, setToggleStatus);
+  };
+
   return (
     <Card>
       <div className="p-2 flex flex-col gap-4">
@@ -143,8 +158,10 @@ export default function SmartRoutingCard() {
               Requests sent with model <code>{form.virtualModel || "auto"}</code> are classified and routed to a combo or model by task type.
             </p>
           </div>
-          <Toggle checked={form.enabled} onChange={() => setForm({ ...form, enabled: !form.enabled })} disabled={loading} />
+          <Toggle checked={form.enabled} onChange={toggleEnabled} disabled={loading || saving} />
         </div>
+
+        <Status status={toggleStatus} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -219,7 +236,7 @@ export default function SmartRoutingCard() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="primary" size="sm" onClick={save} loading={saving} disabled={loading}>Save</Button>
+          <Button variant="primary" size="sm" onClick={() => save()} loading={saving} disabled={loading}>Save</Button>
           <Status status={status} />
         </div>
       </div>
