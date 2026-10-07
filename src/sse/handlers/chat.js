@@ -21,6 +21,10 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { preProvider } from "@/internal/middleware/preProvider.js";
+import { isSmartRoutingRequest, decideRoute, withRouteHeaders } from "@/lib/smartRouting/index.js";
+import { getSmartRoutingConfig } from "@/lib/smartRouting/defaults.js";
+import { discoverCandidates } from "../services/candidateDiscovery.js";
+import { buildPolicyCheck } from "../services/routerPolicy.js";
 
 /**
  * Handle chat completion request
@@ -47,7 +51,7 @@ export async function handleChat(request, clientRawRequest = null) {
   }
   // Log request endpoint and model
   const url = new URL(request.url);
-  const modelStr = body.model;
+  let modelStr = body.model;
 
   // Count messages (support both messages[] and input[] formats)
   const msgCount = body.messages?.length || body.input?.length || 0;
@@ -92,6 +96,35 @@ export async function handleChat(request, clientRawRequest = null) {
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
+  // Smart routing (Phase 1, shadow): the virtual model ("auto/jev") is served by the profile's
+  // fallbackTarget while the router records which model and reasoning effort it would have chosen.
+  // Runs after DLP and bypass so only requests that will actually reach a provider are decided.
+  let smartRoute = null;
+  if (isSmartRoutingRequest(settings, modelStr)) {
+    const cfg = getSmartRoutingConfig(settings);
+    try {
+      smartRoute = await decideRoute({
+        body,
+        settings,
+        keyRecord: auth.keyRecord,
+        candidates: await discoverCandidates(cfg),
+        checkPolicy: buildPolicyCheck({ keyRecord: auth.keyRecord, keyEnforced: auth.enforced === true, providerFilter }),
+      });
+    } catch (error) {
+      log.warn("SMART_ROUTING", `Decision failed, serving the fallback target: ${error.message}`);
+      smartRoute = { profile: cfg.name, mode: cfg.mode, executed: cfg.fallbackTarget, source: "fallback", fallbackReason: "router-error", selected: null, effort: null, confidence: null };
+    }
+    log.info("SMART_ROUTING", `${modelStr} -> ${smartRoute.executed || "(none)"} | shadow=${smartRoute.selected || "-"}${smartRoute.effort ? `:${smartRoute.effort}` : ""} | conf=${smartRoute.confidence ?? "-"} | ${smartRoute.fallbackReason ? `fallback:${smartRoute.fallbackReason}` : smartRoute.source} | pool=${smartRoute.pool ?? "-"} eligible=${smartRoute.eligible?.length ?? "-"} | ${smartRoute.decisionMs ?? "-"}ms`);
+    if (!smartRoute.executed) {
+      return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Smart router has no fallbackTarget to serve this request; set smartRouting.fallbackTarget");
+    }
+    clientRawRequest.smartRouting = smartRoute;
+    modelStr = smartRoute.executed;
+  }
+  // Model that actually produced a successful answer (inside a combo this is the fallback winner)
+  let answeredBy = null;
+  const finish = (response) => (smartRoute ? withRouteHeaders(response, smartRoute, response.ok ? answeredBy : null) : response);
+
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
@@ -102,19 +135,24 @@ export async function handleChat(request, clientRawRequest = null) {
     
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-    return handleComboChat({
+    return finish(await handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, providerFilter),
+      handleSingleModel: async (b, m) => {
+        const result = await handleSingleModelChat(b, m, clientRawRequest, request, apiKey, providerFilter);
+        if (result.ok) answeredBy = m;
+        return result;
+      },
       log,
       comboName: modelStr,
       comboStrategy,
       comboStickyLimit
-    });
+    }));
   }
 
   // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, providerFilter);
+  answeredBy = modelStr;
+  return finish(await handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, providerFilter));
 }
 
 /**

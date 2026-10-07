@@ -1,5 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { DEFAULT_SMART_ROUTING } from "../../smartRouting/defaults.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
@@ -36,6 +37,8 @@ const DEFAULT_SETTINGS = {
   rtkEnabled: true,
   cavemanEnabled: false,
   cavemanLevel: "full",
+  smartRouting: DEFAULT_SMART_ROUTING,
+  decisionApiKeys: {}, // { [providerId]: apiKey }; never returned by GET /api/settings
   securityScan: {
     secretsEnabled: true,
     secretsMode: "enforce",

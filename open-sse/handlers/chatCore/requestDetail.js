@@ -71,6 +71,7 @@ export function buildRequestDetail(base, overrides = {}) {
     providerResponse: base.providerResponse || null,
     response: base.response || {},
     status: base.status || "success",
+    routing: base.clientRawRequest?.smartRouting || undefined,
     ...overrides
   };
 }
