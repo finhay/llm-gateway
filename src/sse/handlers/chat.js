@@ -105,7 +105,9 @@ export async function handleChat(request, clientRawRequest = null) {
     modelStr = route.model;
     smartRoute = route;
   }
-  const finish = (response) => (smartRoute ? withRouteHeaders(response, smartRoute) : response);
+  // Model that actually produced a successful answer (inside a combo this is the fallback winner)
+  let answeredBy = null;
+  const finish = (response) => (smartRoute ? withRouteHeaders(response, smartRoute, response.ok ? answeredBy : null) : response);
 
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
@@ -120,7 +122,11 @@ export async function handleChat(request, clientRawRequest = null) {
     return finish(await handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, providerFilter),
+      handleSingleModel: async (b, m) => {
+        const result = await handleSingleModelChat(b, m, clientRawRequest, request, apiKey, providerFilter);
+        if (result.ok) answeredBy = m;
+        return result;
+      },
       log,
       comboName: modelStr,
       comboStrategy,
@@ -129,6 +135,7 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Single model request
+  answeredBy = modelStr;
   return finish(await handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, providerFilter));
 }
 

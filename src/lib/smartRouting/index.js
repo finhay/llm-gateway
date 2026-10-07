@@ -96,12 +96,13 @@ const headerSafe = (v) => String(v).replace(/[^ -~]/g, "").slice(0, 200);
 /**
  * Copy of `response` with the routing decision in X-Smart-Routing-* headers, so a client can
  * see why it landed on this target. The body is passed through untouched (streams stay streams).
- * For a combo target the model that finally answered is not known here; see the usage logs.
+ * `answeredBy` is the model that produced the answer (for a combo, the fallback winner).
  */
-export function withRouteHeaders(response, route) {
+export function withRouteHeaders(response, route, answeredBy = null) {
   if (!(response instanceof Response)) return response;
   const headers = new Headers(response.headers);
   headers.set("X-Smart-Routing-Target", headerSafe(route.model));
+  if (answeredBy) headers.set("X-Smart-Routing-Model", headerSafe(answeredBy));
   headers.set("X-Smart-Routing-Source", headerSafe(route.source.split(":")[0]));
   if (route.tag) headers.set("X-Smart-Routing-Tag", headerSafe(route.complexity ? `${route.tag}:${route.complexity}` : route.tag));
   if (route.confidence != null) headers.set("X-Smart-Routing-Confidence", String(route.confidence));

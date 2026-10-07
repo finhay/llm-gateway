@@ -280,14 +280,15 @@ The same decision is returned to the client as response headers (also on streami
 
 ```
 X-Smart-Routing-Target: code-premium
+X-Smart-Routing-Model: cc/claude-opus-4-7
 X-Smart-Routing-Tag: code:high
 X-Smart-Routing-Source: typesafe
 X-Smart-Routing-Confidence: 0.92
 ```
 
-`curl -i` shows them. `Target` is the combo or model that was chosen; when it is a combo, the
-model that finally answered (after fallback) is not in these headers, look it up in the
-usage / request logs. Judge whether routing fits by comparing tag, target and the answer
+`curl -i` shows them. `Target` is the combo or model the router chose; `Model` is the model that
+actually produced the answer (for a combo, the one that won after fallback; absent when the
+request failed). Judge whether routing fits by comparing tag, target, model and the answer
 quality over a sample of real requests, and tune `routes` / `minConfidence` accordingly.
 
 `source` is one of `rule`, `<provider id>` (e.g. `typesafe`), `cache`, `pinned`, `low-confidence`,

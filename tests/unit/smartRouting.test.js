@@ -154,6 +154,13 @@ describe("withRouteHeaders", () => {
     expect(out.headers.get("X-Smart-Routing-Tag")).toBe("code:high");
     expect(out.headers.get("X-Smart-Routing-Source")).toBe("classifier-error");
     expect(out.headers.get("X-Smart-Routing-Confidence")).toBe("0.92");
+    expect(out.headers.get("X-Smart-Routing-Model")).toBeNull();
+  });
+
+  it("reports the model that actually answered when known", () => {
+    const out = withRouteHeaders(new Response("x"), { model: "code-premium", source: "typesafe" }, "cx/gpt-5.5");
+    expect(out.headers.get("X-Smart-Routing-Target")).toBe("code-premium");
+    expect(out.headers.get("X-Smart-Routing-Model")).toBe("cx/gpt-5.5");
   });
 });
 
