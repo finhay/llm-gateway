@@ -1,309 +1,259 @@
-# Smart Routing with TypeSafe System One — Plan
+# Smart Router (Jev) — Phase 1: Shadow MVP
 
-Branch: `feature/system-one-routing` (from `master`)
+Issue: [finhay/llm-gateway#6](https://github.com/finhay/llm-gateway/issues/6)
+Branch: `feature/system-one-routing`
 
-## 1. Goal
+## 1. What Phase 1 delivers
 
-Pick the most suitable model automatically for each request by classifying the prompt
-into a **tag** (and a **complexity** level) and mapping that tag to a combo or a
-`provider/model`. The goal is to use expensive models only where they matter, keep
-cheap models for simple traffic, and never make routing the reason a request fails.
+A native router that, for a virtual model (`auto/jev`, configurable), looks at the models the
+gateway can reach **right now**, asks a decision model (TypeSafe Jev / System One) which one
+and which reasoning effort fits the conversation, validates the answer in code, and **records**
+it. In Phase 1 the router runs in **shadow mode**: the request is always served by a
+deterministic `fallbackTarget`; the router's choice is metadata only. Nothing about the
+executed model changes until a later phase turns routing on.
 
-Classification uses [TypeSafe System One](https://docs.typesafe.ai/concepts/system-one)
-(`Choice` questions, model `jev-latest`) behind a layer of free, deterministic rules.
+In scope (issue, Phase 1): one decision-provider connection, one router profile, candidate
+pool, choice of model plus reasoning effort, deterministic fallback, shadow logging, offline
+evaluation.
 
-## 2. Current state (summary)
+Out of scope here (Phase 2/3): executing the chosen model, applying the chosen effort to the
+request, per-key rollout percentage, session stickiness, dashboard metrics, multiple profiles,
+combos as candidates, feedback-driven tuning.
 
-- Entry point: `POST /api/v1/chat/completions` -> `handleChat` in `src/sse/handlers/chat.js`.
-- `body.model` is resolved as a combo name or a `provider/model` string. Combos
-  (`open-sse/services/combo.js`) are ordered model lists (fallback or round-robin) and
-  know nothing about the prompt.
-- There is no routing tag concept. `/api/tags` is only the Ollama-compatible model list.
-- Settings live in a JSON row (`src/lib/db/repos/settingsRepo.js`, `DEFAULT_SETTINGS`).
+Design rule from the issue: **the decision model supplies a bounded semantic judgment; gateway
+code owns constraints, execution, retries and fallbacks.**
 
-## 3. Design
-
-### 3.1 Virtual model
-
-A client that sends `model: "auto"` (configurable via `smartRouting.virtualModel`) opts in
-to smart routing. Any other model string follows the existing path untouched, so existing
-clients are not affected. When smart routing is disabled, `auto` is not special.
-
-### 3.2 Hook point
-
-In `handleChat`, after `preProvider` (auth, DLP, provider filter) and the bypass handler,
-and before the combo check:
-
-```
-preProvider -> bypass -> [smart routing: rewrite modelStr] -> combo check -> single model
-```
-
-Smart routing only rewrites `modelStr` to a combo name or `provider/model`. All fallback,
-credentials, rate-limit and logging logic downstream is reused as is.
-
-### 3.3 Two-stage classification
-
-1. **Deterministic rules (free, instant)** — evaluated first:
-   - request has `tools` -> tag `agent`
-   - request has image parts -> tag `vision`
-   - estimated input larger than `longContextChars` -> tag `long_context`
-2. **System One (one HTTP call, two questions)** — for everything else:
-   - `tag`: `code`, `reasoning`, `chat`, `summarize_translate`, `creative`, `other`
-   - `complexity`: `low`, `medium`, `high`
-
-   Input sent to TypeSafe is limited to the last user message and, when the conversation has
-   history, the user message before it (together truncated to `maxInputChars`, latest message
-   first), plus the first part of the system prompt. Nothing else is sent.
-
-### 3.4 Route table
-
-`smartRouting.routes` maps a key to a target (combo name or `provider/model`).
-Lookup order: `"<tag>:<complexity>"` -> `"<tag>"` -> `defaultTarget`.
-
-```json
-{
-  "code:high": "code-premium",
-  "code": "code-cheap",
-  "reasoning": "reasoning",
-  "agent": "code-premium",
-  "vision": "vision",
-  "long_context": "long-context",
-  "chat:low": "cheap-fast"
-}
-```
-
-Targets are normally combos, so the existing fallback chain still protects every route.
-
-### 3.5 Safety rules
-
-- Classification must never block or fail a request. Timeout (`timeoutMs`, default 800),
-  HTTP error, missing API key, invalid JSON or `confidence < minConfidence` all fall back to
-  `defaultTarget` (or the original model if none is set).
-- The API key comes from the environment or from the admin page (stored per provider in
-  `decisionApiKeys`). It is write-only: never logged and never returned by the settings API.
-- Smart routing runs after DLP, and can be limited to specific API keys (`apiKeyIds`).
-- Classifications are cached (in-memory, bounded) by hash of the classified text. A
-  **confident** decision is **pinned per conversation** (hash of API key + first user
-  message), so the conversation does not switch models between turns and lose context or
-  prompt-cache hits. Fallbacks (classifier error, low confidence) are **not** pinned: the next
-  turn is classified again, now with more context.
-
-### 3.6 Settings (`smartRouting`, disabled by default)
-
-| Key | Default | Meaning |
-|---|---|---|
-| `enabled` | `false` | Master switch |
-| `virtualModel` | `"auto"` | Model name that triggers routing |
-| `provider` | `"typesafe"` | Decision provider id (see 7.1) |
-| `model` | `""` | Provider model; empty = the provider default (`jev-latest` for TypeSafe) |
-| `baseUrl` | `""` | Provider endpoint; empty = the provider default |
-| `minConfidence` | `0.6` | Below this, use `defaultTarget` |
-| `timeoutMs` | `800` | Classifier timeout |
-| `maxInputChars` | `2000` | Text sent to classifier |
-| `longContextChars` | `48000` | Rule threshold for `long_context` |
-| `defaultTarget` | `""` | Fallback combo / model |
-| `routes` | `{}` | Route table (3.4) |
-| `apiKeyIds` | `[]` | Optional allow-list of API key ids (empty = all) |
-
-API key: saved in admin (`decisionApiKeys.<provider>`) or `TYPESAFE_API_KEY`; the environment wins.
-
-## 3.7 Architecture
-
-### Request flow
+## 2. Request flow
 
 ```mermaid
 flowchart TD
-    C[Client: model = auto] --> H[handleChat<br/>src/sse/handlers/chat.js]
-    H --> P[preProvider<br/>auth, DLP, provider filter]
+    C["Client: model = auto/jev"] --> H["handleChat (src/sse/handlers/chat.js)"]
+    H --> P["preProvider: auth, DLP, provider filter"]
     P --> B[bypass handler]
-    B --> S{smart routing<br/>enabled and model == virtualModel?}
-    S -- no --> K
-    S -- yes --> R[resolveSmartRoute]
-    R --> PIN{conversation<br/>pinned?}
-    PIN -- yes --> T[target]
-    PIN -- no --> RU{deterministic rule<br/>tools / image / long?}
-    RU -- yes --> LK[route lookup]
-    RU -- no --> CA{classifier<br/>cache hit?}
-    CA -- yes --> LK
-    CA -- no --> TS[TypeSafe System One<br/>tag + complexity]
-    TS -- timeout / error / low confidence --> D[defaultTarget]
-    TS -- ok --> LK
-    LK --> T
-    D --> T
-    T --> K[combo check<br/>getComboModels]
-    K -- combo --> CC[handleComboChat<br/>fallback chain]
-    K -- model --> SM[handleSingleModelChat]
-    CC --> PR[(Providers)]
-    SM --> PR
+    B --> S{"router enabled and<br/>model == virtual model?"}
+    S -- no --> K[combo / single model as today]
+    S -- yes --> D1["discoverCandidates<br/>(connected providers, 30s cache)"]
+    D1 --> F["filterCandidates per request:<br/>capabilities, context size,<br/>key allowlist, DLP, availability"]
+    F --> Q{"eligible candidates"}
+    Q -- none --> FB["fallback: no-eligible-candidates"]
+    Q -- one --> ONE["selected = that one, no external call"]
+    Q -- two or more --> J["decision provider (Jev)<br/>model choice + effort"]
+    J -- timeout / error / invalid --> FB2["fallback with reason"]
+    J --> V["validate in code:<br/>offered candidate, confidence >= min,<br/>effort supported"]
+    V -- fails --> FB2
+    V -- ok --> REC
+    ONE --> REC
+    FB --> REC
+    FB2 --> REC
+    REC["decision recorded"] --> X["serve fallbackTarget"]
+    X --> K
+    REC -.-> RD[("requestDetails.routing")]
+    REC -.-> HDR["X-Smart-Routing-* headers"]
 ```
 
-### Components
+The hook only rewrites the model string to `fallbackTarget`; credentials, rate limits, DLP,
+account fallback, translation, streaming and usage tracking are the existing code paths.
 
-| Module | Responsibility |
+## 3. Candidates are discovered, not configured
+
+The admin does not list models. The pool is built from what is reachable:
+
+1. Active provider connections (plus no-auth free providers).
+2. Each provider's built-in LLM models, custom models, and aliases of pass-through providers.
+3. Minus models disabled in the dashboard.
+4. Minus `exclude` patterns, restricted to `include` patterns when given, minus per-model `exclude`.
+5. Metadata inferred per model:
+   - **quality / latency tier** from the model name (e.g. opus, pro, thinking = high quality;
+     haiku, mini, flash = low latency and lower quality),
+   - **cost tier** from the model's output price, relative to the rest of the pool (unknown
+     price = medium),
+   - **vision** from the model family, **tools** and **structured output** assumed supported,
+   - **reasoning efforts** for reasoning-capable families, limited to the profile's closed set.
+6. `overrides` replace any inferred field for a model when the guess is wrong.
+7. The pool is capped at `maxCandidates` (default 40), spread across quality x cost.
+
+Compatible (custom endpoint) providers and combos are not discovered in Phase 1.
+
+`GET /api/smart-routing/candidates` shows the current pool with the inferred metadata, and the
+dashboard card renders it, so an admin can see exactly what the router sees.
+
+### Per-request eligibility
+
+For each request the pool is filtered again before anything is sent to the decision model:
+
+| Reason | Meaning |
 |---|---|
-| `src/sse/handlers/chat.js` | Hook: detects the virtual model, calls the resolver, rewrites `modelStr`, logs the decision |
-| `src/lib/smartRouting/index.js` | Orchestration: key filter, conversation pin, rules, cache, classifier call, route lookup. Never throws |
-| `src/lib/smartRouting/rules.js` | Pure functions: extract signals from OpenAI / Responses / Claude / Gemini bodies, deterministic tags, route lookup |
-| `src/lib/smartRouting/typesafeClient.js` | `POST /v1/systemone` (Choice: `tag`, `complexity`), timeout, response validation |
-| `src/lib/smartRouting/defaults.js` | Default config and completion of partially stored config |
-| `src/lib/db/repos/settingsRepo.js` | Persists `smartRouting` in the settings row |
-| `open-sse/services/combo.js` | Unchanged: executes the chosen combo with its fallback chain |
+| `no-vision` / `no-tools` / `no-structured-output` | Request needs it, model lacks it |
+| `context-too-small` | Estimated tokens exceed the model's `contextLimit` (when set) |
+| `key-policy` | API key's provider allowlist excludes the provider (only for enforced keys) |
+| `dlp-policy` | Provider-risk policy from `preProvider` excludes every connection of the provider |
+| `unavailable` | No active connection, or all are locked for that model |
 
-### Design decisions
+Rejected candidates are never sent to the decision model, and a choice outside the offered set
+is rejected in code (`invalid-choice`), so a model excluded by policy can never be selected.
 
-- **Rewrite, don't fork.** Smart routing only changes the model string, so credentials,
-  rate limits, fallback, translation and usage logging are reused with no duplicated logic.
-- **Fail open.** Every classifier problem ends at `defaultTarget`; only a missing target
-  (no route and no default) returns a 503, with a message that names the setting.
-- **Secrets stay in the environment.** `TYPESAFE_API_KEY` is read from `process.env` at call time.
-- **State is per-process.** Cache and conversation pins are in-memory (bounded at 1000 entries
-  each); a restart or a second instance just re-classifies. Moving them to `kvStore` is Phase 3.
+## 4. The decision
 
-## 4. Implementation phases
+One request to the provider with two typed Choice questions:
 
-### Phase 1 — rules + virtual model (no external call)
-- `src/lib/smartRouting/rules.js`: text extraction (OpenAI chat, Responses, Claude formats)
-  and deterministic tags.
-- `smartRouting` defaults in `settingsRepo.js`.
-- Hook in `chat.js`, decision logged via `log.info`.
+- **model**: one of the eligible candidates; each option carries its description, quality /
+  latency / cost tiers, capabilities and context size; the instructions state the optimisation
+  weights.
+- **effort**: one of the profile's `efforts` (default `low`, `medium`, `high`).
 
-### Phase 2 — System One classifier
-- `src/lib/smartRouting/typesafeClient.js`: `POST /v1/systemone` with timeout.
-- `src/lib/smartRouting/index.js`: orchestration, route lookup, cache, conversation pin.
-- Unit tests with `node --test` (`tests/smartRouting.test.mjs`).
+Input is bounded: the most recent turns up to `maxInputChars` (the newest always included) and
+the first 500 characters of the system prompt. Raw prompts go to the decision provider only;
+they are never logged or persisted.
 
-### Phase 3 — observability and UI (follow-up)
-- Persist tag, confidence, target and classifier latency in `requestDetails`.
-- Dashboard page to edit routes/thresholds and show tag distribution and cost.
-- Tune `criteria` and routes from real traffic; consider storing the cache in `kvStore`.
+Validation, in order: provider answered, choice was offered, `confidence >= minConfidence`,
+effort is in the profile's set **and** supported by the chosen model (otherwise dropped, the
+model choice stays).
 
-## 5. Risks and open points
+When only one candidate is eligible the external call is skipped (`source: single-candidate`).
 
-- **Data egress:** prompt text (truncated) leaves the gateway to `api.typesafe.ai`. Keep
-  it opt-in, after DLP, and restrict by API key when needed.
-- **Latency and cost:** the docs give no numbers. Measure before enabling for all traffic;
-  the 800 ms timeout and the cache bound the downside.
-- **Mid-conversation switching:** handled by conversation pinning; clients that do not
-  resend history look like new conversations and may be routed differently.
-- **Invalid targets:** a route pointing at a missing combo/model fails like any bad model
-  string. Validate routes when the UI is added (Phase 3).
-- **Combo rotation state** is per-process memory; unrelated but relevant for multi-instance
-  deployments.
+### Fallback reasons
 
-## 6. Test plan
+The request is always served by `fallbackTarget`. `fallbackReason` explains why the router
+gave no usable choice:
 
-- Unit: text extraction per format, rule tags, route lookup order, low-confidence and
-  timeout fallbacks, conversation pinning, cache hit.
-- Manual: `model: "auto"` with plain chat, code, tools and image payloads; confirm the
-  chosen target in logs; confirm a normal model string is untouched; confirm requests
-  succeed with `TYPESAFE_API_KEY` unset.
+`no-eligible-candidates`, `low-confidence`, `timeout`, `provider-error`, `invalid-response`,
+`invalid-choice`, `no-api-key`, `unknown-provider`, `key-not-allowed`, `router-error`.
 
-## 7. Configuration guide
+The decision has its own timeout (`timeoutMs`, default 800 ms), no retries, independent of the
+downstream request. In shadow mode this wait is added to the request, so `auto/jev` is opt-in and
+the timeout is the upper bound of the cost.
 
-Smart routing is **off by default**. There is no UI yet (Phase 3); configure it through
-the settings API.
+## 5. Observability
 
-### 7.1 API key: admin or environment
+The decision is stored on the request's `requestDetails` record under `routing`
+(see `open-sse/handlers/chatCore/requestDetail.js`, `requestDetailsRepo.js`):
 
-The key belongs to a **decision provider** (today only `typesafe`; the registry in
-`src/lib/smartRouting/providers.js` is where another provider would be added). Keys are stored
-**per provider id**, so a key is always paired with the provider that uses it.
+| Field | Meaning |
+|---|---|
+| `profile`, `version` | Profile name and a fingerprint of its settings |
+| `mode`, `executed` | `shadow`, and the target that served the request |
+| `selected`, `effort`, `confidence`, `probabilities` | The validated shadow choice |
+| `suggested` | Raw choice when it was rejected (invalid or low confidence) |
+| `source`, `fallbackReason` | `typesafe`, `single-candidate` or `fallback` and why |
+| `pool`, `eligible`, `rejected` | Pool size, eligible ids, rejected ids with reasons |
+| `decisionMs`, `usage` | Decision latency and the decision provider's token usage |
 
-Two ways to set it, both supported:
+No prompt text, headers or credentials are stored. The record exists only when request
+observability is enabled (existing setting).
 
-- **Admin (fastest):** Dashboard, Profile page, **Smart routing** card. Pick the provider,
-  paste the key, press **Test key** (runs one real classification with that exact
-  provider and key), then **Save**. The key is write-only: it is never returned by
-  `GET /api/settings`; the page only shows whether a key exists and where it comes from.
-- **Environment:** `TYPESAFE_API_KEY` in `.env` (restart to apply), optional `TYPESAFE_BASE_URL`.
+Response headers on `auto/jev` requests:
 
-If both are set, **the environment wins**, so a deployment can pin its secret. The card says
-which one is in use. Keys saved in admin live in the settings database (not encrypted at rest),
-so prefer the environment on shared or production hosts.
-
-### 7.2 Create the target combos first
-
-Every value in `routes` and `defaultTarget` must be an existing combo name or a
-`provider/model`. Create the combos in the dashboard (Combos page) before enabling, e.g.
-`code-premium`, `code-cheap`, `reasoning`, `cheap-fast`, `always-on`.
-
-### 7.3 Enable and set routes
-
-Use the **Smart routing** card: toggle on, set the default target (required to enable),
-minimum confidence and the routes JSON, then Save.
-
-The same through the API: `PATCH /api/settings` merges the `smartRouting` object field by
-field (omitted fields keep their value; `routes` is replaced as a whole) and validates
-`provider`. Keys: `{ "decisionApiKeys": { "typesafe": "<key>" } }` sets one,
-`{ "decisionApiKeys": { "typesafe": null } }` removes the saved one, an empty string is ignored.
-
-```js
-await fetch("/api/settings", {
-  method: "PATCH",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    smartRouting: {
-      enabled: true,
-      defaultTarget: "always-on",
-      routes: { "code:high": "code-premium", "code": "code-cheap", "agent": "code-premium", "chat:low": "cheap-fast" }
-    }
-  })
-}).then(r => r.json())
+```
+X-Smart-Routing-Mode: shadow
+X-Smart-Routing-Target: always-on            <- what served the request
+X-Smart-Routing-Model: cc/claude-sonnet-4-6  <- model that actually answered (fallback winner in a combo)
+X-Smart-Routing-Shadow-Choice: cc/claude-opus-4-7
+X-Smart-Routing-Shadow-Effort: high
+X-Smart-Routing-Confidence: 0.92
+X-Smart-Routing-Source: typesafe             <- or fallback:<reason>
 ```
 
-`POST /api/smart-routing/test` with `{ "provider": "typesafe", "apiKey": "<optional>" }` checks a
-key/provider pair (the typed key is used for that call only, never saved or echoed).
+The server log has one `SMART_ROUTING` line per request. Dashboard charts are Phase 2.
 
-Always set `defaultTarget`. With it empty, a classifier failure on a tag that has no route
-returns `503 Smart routing found no target model`.
+## 6. Configuration
 
-To turn it off: switch the toggle off (or `PATCH { "smartRouting": { "enabled": false } }`).
-Requests with `model: "auto"` then fail like any unknown model.
+Dashboard: Profile page, **Smart router** card. API: `PATCH /api/settings` with `smartRouting`
+(merged field by field and validated; the earlier tag and route-table settings no longer exist).
 
-### 7.4 Use it
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Master switch (needs `fallbackTarget`) |
+| `name` | `"default"` | Profile name, stored with each decision |
+| `virtualModel` | `"auto/jev"` | Model name that triggers the router |
+| `mode` | `"shadow"` | Only `shadow` exists in Phase 1 |
+| `provider` | `"typesafe"` | Decision provider id (registry in `providers.js`) |
+| `model`, `baseUrl` | `""` | Provider model / endpoint; empty = provider default (`jev-latest`) |
+| `fallbackTarget` | `""` | Combo or `provider/model` that serves every request |
+| `include` / `exclude` | `[]` | Glob patterns on `alias/model` |
+| `overrides` | `{}` | Per-model corrections, e.g. `{"cc/opus": {"qualityTier": "high"}}` |
+| `maxCandidates` | `40` | Pool cap (2 to 200) |
+| `efforts` | `low, medium, high` | Closed set of reasoning efforts |
+| `weights` | `0.5 / 0.25 / 0.25` | quality / latency / cost importance |
+| `minConfidence` | `0.6` | Below this the choice is not accepted |
+| `timeoutMs` | `800` | Decision timeout |
+| `maxInputChars` | `4000` | Conversation text sent to the decision provider |
+| `apiKeyIds` | `[]` | Only these gateway keys may use the router (empty = all) |
 
-Send `model: "auto"` (or your `virtualModel`):
+Override fields: `qualityTier`, `latencyTier`, `costTier` (`low|medium|high`), `capabilities`
+(`vision`, `tools`, `structuredOutput`), `contextLimit`, `reasoningEfforts`, `description`,
+`exclude`.
+
+### API key for the decision provider
+
+Stored per provider id, so a key is always paired with its provider:
+
+- **Admin:** paste it in the card, press **Test key** (one real decision on stand-in
+  candidates with that exact provider and key), then Save. It is write-only: `GET /api/settings`
+  returns only whether a key exists and where it comes from. Stored unencrypted in the settings
+  database.
+- **Environment:** `TYPESAFE_API_KEY` (optional `TYPESAFE_BASE_URL`). If both exist, the
+  environment wins.
+
+Adding a provider: register it in `src/lib/smartRouting/providers.js` with a `decide` function
+that returns `{ choice, confidence, probabilities, effort, effortConfidence, usage }` or throws a
+`DecisionError`.
+
+### Turning it on
+
+1. Create or choose the `fallbackTarget` (an existing combo is the natural choice).
+2. Set the key and press **Test key**.
+3. Check the model list in the card; use `include`, `exclude` or `overrides` to correct it.
+4. Switch the router on. Send requests with `model: "auto/jev"`.
+5. Read the headers or `requestDetails.routing` to see what the router would have chosen.
+
+## 7. Offline evaluation
+
+`scripts/smart-routing-eval.mjs` replays a dataset through the real decision provider and
+compares the router against a fixed-model baseline, before anyone enables routing:
 
 ```bash
-curl http://localhost:20128/v1/chat/completions \
-  -H "Authorization: Bearer <api key>" -H "Content-Type: application/json" \
-  -d '{"model":"auto","messages":[{"role":"user","content":"Fix this SQL deadlock"}]}'
+# 1. save the pool the router sees: GET /api/smart-routing/candidates > candidates.json
+# 2. dataset.jsonl, one per line: {"prompt":"..."} or {"messages":[...]}, optional
+#    "tools": [...] and "acceptable": ["cc/claude-haiku-4-5", ...]
+TYPESAFE_API_KEY=... node scripts/smart-routing-eval.mjs \
+  --dataset dataset.jsonl --candidates candidates.json \
+  --baseline cc/claude-sonnet-4-6 [--profile profile.json] [--output-tokens 400] [--report report.json]
 ```
 
-Check the server log for the decision:
+Reports: fallback rate and reasons, selection and effort distribution, confidence, decision
+latency (p50 / p95), router token use, estimated cost versus the baseline (dollars when every
+candidate has a price, otherwise relative tier units), latency-tier mix, and the share of labelled
+prompts where the choice is in `acceptable`. Undecided prompts are costed at the baseline.
+Model answer latency and quality are not measured offline: quality comes from your `acceptable`
+labels and latency from the tiers. The evaluation treats every candidate as allowed and
+reachable (it measures the decision, not policy).
 
-```
-SMART_ROUTING auto -> code-premium | tag=code:high | conf=0.92 | typesafe | 412ms
-```
+## 8. Tests
 
-The same decision is returned to the client as response headers (also on streaming responses):
+`tests/unit/smartRouting.test.js` (vitest) covers signals and excerpt bounds, the discovered pool
+(inference, include / exclude / overrides, cap), capability, size and policy filtering, the
+confidence gate, invalid and filtered-out choices, every fallback path, single-candidate skip,
+effort validation, no prompt text in the decision, headers, profile validation, provider keys,
+and the evaluation maths. The evaluation script was also run end to end against a local stand-in
+for the decision API.
 
-```
-X-Smart-Routing-Target: code-premium
-X-Smart-Routing-Model: cc/claude-opus-4-7
-X-Smart-Routing-Tag: code:high
-X-Smart-Routing-Source: typesafe
-X-Smart-Routing-Confidence: 0.92
-```
+Not covered yet: integration tests through `handleChat` for the Chat Completions, Responses and
+Messages endpoints, streaming behaviour of the headers, discovery and policy checks against a real
+database, and an end-to-end run against the real TypeSafe API.
 
-`curl -i` shows them. `Target` is the combo or model the router chose; `Model` is the model that
-actually produced the answer (for a combo, the one that won after fallback; absent when the
-request failed). Judge whether routing fits by comparing tag, target, model and the answer
-quality over a sample of real requests, and tune `routes` / `minConfidence` accordingly.
+## 9. Known limitations
 
-`source` is one of `rule`, `<provider id>` (e.g. `typesafe`), `cache`, `pinned`, `low-confidence`,
-`key-not-allowed`, `empty-input`, or `classifier-error: <reason>`.
+- Shadow mode adds up to `timeoutMs` to each `auto/jev` request.
+- Capability and tier inference is name based; wrong guesses are corrected with `overrides`.
+- Combos and compatible (custom endpoint) providers are not candidates yet.
+- Prompt excerpts leave the gateway for the decision provider; keep the router opt-in and
+  restrict it with `apiKeyIds` where needed.
+- Requests do not use the chosen model or effort yet; applying them (and mapping effort to each
+  API format) is Phase 2.
 
-### 7.5 Limit to some API keys
+## 10. Next phases
 
-Set `apiKeyIds` to a list of API key ids to enable it only for those keys; other keys sending
-`model: "auto"` get `defaultTarget`. Empty list means all keys.
-
-### 7.6 Tuning
-
-| Symptom | Change |
-|---|---|
-| Too many `low-confidence` fallbacks | Lower `minConfidence` (e.g. 0.5) or add clearer `criteria` in `typesafeClient.js` |
-| Classifier timeouts in the log | Raise `timeoutMs`; check TypeSafe latency |
-| Tag costs too much / too little | Edit the route for that tag; no restart needed |
-| Long prompts misrouted | Adjust `longContextChars` |
+- **Phase 2:** execute the chosen model with the chosen effort, per-key enablement and rollout
+  percentage, session stickiness, dashboard metrics, integration tests.
+- **Phase 3:** multiple profiles by team or workload, eval-driven tuning, adaptive cost and
+  latency constraints from pricing and provider health.
