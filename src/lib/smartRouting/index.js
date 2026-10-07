@@ -1,110 +1,129 @@
 import { createHash } from "node:crypto";
-import { extractSignals, ruleTag, lookupRoute, buildClassifierText } from "./rules.js";
+import { extractSignals, buildConversationExcerpt } from "./signals.js";
+import { filterCandidates } from "./candidates.js";
 import { getDecisionProvider, resolveDecisionApiKey } from "./providers.js";
 import { getSmartRoutingConfig } from "./defaults.js";
-
-const CACHE_MAX = 1000;
-const classifyCache = new Map(); // hash(text) -> classifier result
-const conversationPins = new Map(); // hash(api key + first user turn) -> decision
-
-const sha = (s) => createHash("sha1").update(s).digest("hex");
-
-function remember(map, key, value) {
-  if (map.size >= CACHE_MAX) map.delete(map.keys().next().value); // drop oldest
-  map.set(key, value);
-}
 
 export function isSmartRoutingRequest(settings, modelStr) {
   const cfg = getSmartRoutingConfig(settings);
   return cfg.enabled && modelStr === cfg.virtualModel;
 }
 
-function appliesToKey(cfg, keyRecord) {
-  const ids = cfg.apiKeyIds || [];
-  return ids.length === 0 || (keyRecord?.id != null && ids.includes(keyRecord.id));
+/** Short fingerprint of everything that shapes a decision, so records can be grouped per profile version. */
+export function profileVersion(cfg) {
+  const { efforts, weights, minConfidence, provider, model, mode, fallbackTarget, include, exclude, overrides, maxCandidates } = cfg;
+  return createHash("sha1")
+    .update(JSON.stringify({ efforts, weights, minConfidence, provider, model, mode, fallbackTarget, include, exclude, overrides, maxCandidates }))
+    .digest("hex")
+    .slice(0, 8);
+}
+
+// Only a reasoning effort the profile and the chosen model both support is kept
+function validEffort(effort, cfg, candidate) {
+  const supported = candidate.reasoningEfforts || [];
+  return effort && cfg.efforts.includes(effort) && supported.includes(effort) ? effort : null;
 }
 
 /**
- * Decide which combo / model a virtual-model request should use.
- * Never throws: any classifier problem degrades to cfg.defaultTarget (possibly "").
- * @returns {Promise<{ model: string, tag: string|null, complexity: string|null, confidence: number|null, source: string, ms: number }>}
+ * Phase 1 (shadow): decide which candidate model and reasoning effort the router would pick.
+ * The request itself is always served by `fallbackTarget`; the returned decision is metadata.
+ * Never throws: every failure becomes `fallbackReason`.
+ *
+ * @param {object} args
+ * @param {object[]} args.candidates models discovered as reachable right now (see candidateDiscovery.js)
+ * @param {(candidate: object) => Promise<string|null>} args.checkPolicy why a candidate is not allowed/available, or null
+ * @returns {Promise<object>} decision (no prompt text, safe to persist)
  */
-export async function resolveSmartRoute({ body, settings, keyRecord, env = process.env, fetchImpl }) {
+export async function decideRoute({ body, settings, keyRecord, candidates, checkPolicy, env = process.env, fetchImpl }) {
   const started = Date.now();
   const cfg = getSmartRoutingConfig(settings);
-  const done = (model, extra) => ({ model, tag: null, complexity: null, confidence: null, ...extra, ms: Date.now() - started });
-  const fallback = (source) => done(cfg.defaultTarget || "", { source });
+  const decision = {
+    profile: cfg.name,
+    version: profileVersion(cfg),
+    mode: cfg.mode,
+    executed: cfg.fallbackTarget,
+    source: "fallback",
+    fallbackReason: null,
+    selected: null,
+    suggested: null,
+    effort: null,
+    confidence: null,
+    probabilities: null,
+    pool: candidates.length,
+    eligible: [],
+    rejected: [],
+    usage: null,
+    decisionMs: 0,
+  };
+  const fallback = (reason, extra = {}) => ({ ...decision, ...extra, fallbackReason: reason, decisionMs: Date.now() - started });
 
-  if (!appliesToKey(cfg, keyRecord)) return fallback("key-not-allowed");
+  const allowedKeys = cfg.apiKeyIds || [];
+  if (allowedKeys.length > 0 && !(keyRecord?.id != null && allowedKeys.includes(keyRecord.id))) {
+    return fallback("key-not-allowed");
+  }
 
   const signals = extractSignals(body);
-  const pinKey = sha(`${keyRecord?.id ?? ""}\n${signals.firstUser || signals.lastUser}`);
-  const pinned = conversationPins.get(pinKey);
-  if (pinned) return done(pinned.model, { ...pinned, source: "pinned" });
+  const { eligible, rejected } = await filterCandidates(candidates, signals, checkPolicy);
+  const eligibleIds = eligible.map((c) => c.id);
+  if (eligible.length === 0) return fallback("no-eligible-candidates", { rejected });
 
-  // Pin only confident decisions; fallbacks (errors, low confidence) are retried next turn
-  const pin = (decision) => {
-    if (decision.model) remember(conversationPins, pinKey, decision);
-    return decision;
-  };
-
-  const forced = ruleTag(signals, cfg);
-  if (forced) {
-    return pin(done(lookupRoute(cfg.routes, forced, null, cfg.defaultTarget), { tag: forced, source: "rule" }));
+  // Nothing to decide: skip the external call
+  if (eligible.length === 1) {
+    return { ...decision, source: "single-candidate", selected: eligible[0].id, eligible: eligibleIds, rejected, decisionMs: Date.now() - started };
   }
-
-  const text = buildClassifierText(signals, cfg.maxInputChars);
-  if (!text.trim()) return fallback("empty-input");
 
   const provider = getDecisionProvider(cfg.provider);
-  if (!provider) return fallback(`classifier-error: unknown decision provider "${cfg.provider}"`);
-  const model = cfg.model || provider.defaultModel;
+  if (!provider) return fallback("unknown-provider", { eligible: eligibleIds, rejected });
 
-  const textKey = sha(`${provider.id}\n${model}\n${text}`);
-  let result = classifyCache.get(textKey);
-  let source = "cache";
-  if (!result) {
-    source = provider.id;
-    try {
-      result = await provider.classify({
-        text,
-        system: signals.system.slice(0, 500),
-        apiKey: resolveDecisionApiKey({ settings, provider, env }).key,
-        baseUrl: cfg.baseUrl || env[provider.envBaseUrlKey] || undefined,
-        model,
-        timeoutMs: cfg.timeoutMs,
-        fetchImpl,
-      });
-      remember(classifyCache, textKey, result);
-    } catch (error) {
-      return fallback(`classifier-error: ${error.message}`);
-    }
+  let answer;
+  try {
+    answer = await provider.decide({
+      excerpt: buildConversationExcerpt(signals, { maxChars: cfg.maxInputChars }),
+      candidates: eligible,
+      efforts: cfg.efforts,
+      weights: cfg.weights,
+      apiKey: resolveDecisionApiKey({ settings, provider, env }).key,
+      baseUrl: cfg.baseUrl || env[provider.envBaseUrlKey] || undefined,
+      model: cfg.model || provider.defaultModel,
+      timeoutMs: cfg.timeoutMs,
+      fetchImpl,
+    });
+  } catch (error) {
+    return fallback(error.code || "provider-error", { eligible: eligibleIds, rejected });
   }
 
-  // Not pinned: the next turn adds context, so it gets another chance to be classified
-  if (result.confidence < cfg.minConfidence) {
-    return { ...fallback("low-confidence"), tag: result.tag, confidence: result.confidence };
-  }
-  // A shaky complexity read is dropped so routing falls back to the tag-only route
-  const complexity = result.complexity && result.complexityConfidence >= cfg.minConfidence ? result.complexity : null;
-  const target = lookupRoute(cfg.routes, result.tag, complexity, cfg.defaultTarget);
-  return pin(done(target, { tag: result.tag, complexity, confidence: result.confidence, source }));
+  const known = { eligible: eligibleIds, rejected, suggested: answer.choice, confidence: answer.confidence, probabilities: answer.probabilities, usage: answer.usage };
+  const chosen = eligible.find((c) => c.id === answer.choice);
+  // The decision model can only pick from what it was offered; anything else is rejected in code
+  if (!chosen) return fallback("invalid-choice", known);
+  if (answer.confidence < cfg.minConfidence) return fallback("low-confidence", known);
+
+  return {
+    ...decision,
+    ...known,
+    source: provider.id,
+    selected: chosen.id,
+    effort: validEffort(answer.effort, cfg, chosen),
+    decisionMs: Date.now() - started,
+  };
 }
 
-const headerSafe = (v) => String(v).replace(/[^ -~]/g, "").slice(0, 200);
+const headerSafe = (v) => String(v).replace(/[^\x20-\x7E]/g, "").slice(0, 200);
 
 /**
- * Copy of `response` with the routing decision in X-Smart-Routing-* headers, so a client can
- * see why it landed on this target. The body is passed through untouched (streams stay streams).
- * `answeredBy` is the model that produced the answer (for a combo, the fallback winner).
+ * Copy of `response` with the decision in X-Smart-Routing-* headers. The body is passed
+ * through untouched (streams stay streams). In shadow mode `Target` is what served the request
+ * and `Shadow-*` is what the router would have chosen. `answeredBy` is the model that produced the answer.
  */
-export function withRouteHeaders(response, route, answeredBy = null) {
+export function withRouteHeaders(response, decision, answeredBy = null) {
   if (!(response instanceof Response)) return response;
   const headers = new Headers(response.headers);
-  headers.set("X-Smart-Routing-Target", headerSafe(route.model));
+  headers.set("X-Smart-Routing-Mode", decision.mode);
+  headers.set("X-Smart-Routing-Target", headerSafe(decision.executed));
   if (answeredBy) headers.set("X-Smart-Routing-Model", headerSafe(answeredBy));
-  headers.set("X-Smart-Routing-Source", headerSafe(route.source.split(":")[0]));
-  if (route.tag) headers.set("X-Smart-Routing-Tag", headerSafe(route.complexity ? `${route.tag}:${route.complexity}` : route.tag));
-  if (route.confidence != null) headers.set("X-Smart-Routing-Confidence", String(route.confidence));
+  headers.set("X-Smart-Routing-Source", headerSafe(decision.fallbackReason ? `fallback:${decision.fallbackReason}` : decision.source));
+  if (decision.selected) headers.set("X-Smart-Routing-Shadow-Choice", headerSafe(decision.selected));
+  if (decision.effort) headers.set("X-Smart-Routing-Shadow-Effort", headerSafe(decision.effort));
+  if (decision.confidence != null) headers.set("X-Smart-Routing-Confidence", String(decision.confidence));
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }

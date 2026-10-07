@@ -1,12 +1,14 @@
-import { classify as typesafeClassify } from "./typesafeClient.js";
+import { decide as typesafeDecide } from "./typesafeClient.js";
 
 /**
- * Decision providers: services that classify a prompt into { tag, complexity }.
+ * Decision providers: services that pick one candidate model (and a reasoning effort) for a conversation.
  * An API key only means something together with its provider, so keys are stored per
  * provider id (settings.decisionApiKeys[id]) and the active provider is smartRouting.provider.
  *
- * To add a provider, register it here. `classify` must resolve to
- * { tag, confidence, complexity, complexityConfidence } and throw on any failure.
+ * To add a provider, register it here. `decide` takes
+ * { excerpt, candidates, efforts, weights, apiKey, baseUrl, model, timeoutMs, fetchImpl } and resolves to
+ * { choice, confidence, probabilities, effort, effortConfidence, usage }; on failure it throws a
+ * DecisionError with a code ("no-api-key", "timeout", "provider-error", "invalid-response").
  */
 export const DECISION_PROVIDERS = {
   typesafe: {
@@ -15,7 +17,7 @@ export const DECISION_PROVIDERS = {
     envKey: "TYPESAFE_API_KEY",
     envBaseUrlKey: "TYPESAFE_BASE_URL",
     defaultModel: "jev-latest",
-    classify: typesafeClassify,
+    decide: typesafeDecide,
   },
 };
 
