@@ -139,7 +139,6 @@ export const PROVIDER_MODELS = {
     // GitHub Copilot - Anthropic models
     { id: "claude-haiku-4.5", name: "Claude Haiku 4.5" },
     { id: "claude-opus-4.5", name: "Claude Opus 4.5" },
-    { id: "claude-sonnet-4", name: "Claude Sonnet 4" },
     { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" },
     { id: "claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
     { id: "claude-opus-4.6", name: "Claude Opus 4.6" },
@@ -225,8 +224,6 @@ export const PROVIDER_MODELS = {
     { id: "kimi-latest", name: "Kimi Latest" },
   ],
   kc: [  // KiloCode
-    { id: "anthropic/claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
-    { id: "anthropic/claude-opus-4-20250514", name: "Claude Opus 4" },
     { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro" },
     { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" },
     { id: "openai/gpt-4.1", name: "GPT-4.1" },
@@ -328,9 +325,6 @@ export const PROVIDER_MODELS = {
     { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
     { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
     { id: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
-    { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
-    { id: "claude-opus-4-20250514", name: "Claude Opus 4" },
-    { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet" },
   ],
   gemini: [
     { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash" },
@@ -764,7 +758,6 @@ export const PROVIDER_MODELS = {
   aimlapi: [
     { id: "gpt-4o", name: "GPT-4o" },
     { id: "gpt-4o-mini", name: "GPT-4o Mini" },
-    { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet" },
     { id: "gemini-2.0-flash-exp", name: "Gemini 2.0 Flash" },
     { id: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", name: "Llama 3.1 70B" },
   ],
@@ -814,19 +807,15 @@ export const PROVIDER_MODELS = {
     { id: "auto", name: "Auto (Best Model)" },
   ],
   completions: [
-    { id: "claude-opus-4", name: "Claude Opus 4" },
-    { id: "claude-sonnet-4", name: "Claude Sonnet 4" },
     { id: "gpt-4o", name: "GPT-4o" },
     { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" },
   ],
   enally: [
     { id: "gpt-4o", name: "GPT-4o" },
     { id: "gpt-4o-mini", name: "GPT-4o Mini" },
-    { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet" },
   ],
   freetheai: [
     { id: "gpt-4o", name: "GPT-4o" },
-    { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet" },
     { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" },
     { id: "deepseek-chat", name: "DeepSeek Chat" },
   ],
@@ -886,7 +875,6 @@ export const PROVIDER_MODELS = {
   ],
   puter: [
     { id: "gpt-5", name: "GPT-5" },
-    { id: "claude-opus-4", name: "Claude Opus 4" },
     { id: "gemini-3-pro-preview", name: "Gemini 3 Pro" },
     { id: "grok-4", name: "Grok 4" },
     { id: "deepseek-chat", name: "DeepSeek V3" },
@@ -1041,7 +1029,6 @@ export const PROVIDER_MODELS = {
     { id: "glm-4.7", name: "GLM 4.7" },
   ],
   af: [
-    { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Free)" },
     { id: "moonshot/kimi-k2.6", name: "Kimi K2.6 (Free)" },
     { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash (Free)" },
   ],
@@ -1099,7 +1086,6 @@ export const PROVIDER_MODELS = {
     { id: "anthropic/claude-opus-4.8-fast", name: "Claude Opus 4.8 Fast" },
     { id: "anthropic/claude-opus-5", name: "Claude Opus 5" },
     { id: "anthropic/claude-opus-5-fast", name: "Claude Opus 5 Fast" },
-    { id: "anthropic/claude-sonnet-4", name: "Claude Sonnet 4" },
     { id: "anthropic/claude-sonnet-4.5", name: "Claude Sonnet 4.5" },
     { id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
     { id: "anthropic/claude-sonnet-5", name: "Claude Sonnet 5" },
