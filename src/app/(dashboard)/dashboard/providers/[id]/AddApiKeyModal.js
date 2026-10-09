@@ -239,7 +239,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             label="Default Model"
             value={formData.defaultModel}
             onChange={(e) => setFormData({ ...formData, defaultModel: e.target.value })}
-            placeholder={isAnthropic ? "claude-3-5-sonnet-latest" : "gpt-4o-mini"}
+            placeholder={isAnthropic ? "claude-sonnet-5-5" : "gpt-4o-mini"}
           />
         )}
         {isOllamaLocal && (

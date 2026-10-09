@@ -992,7 +992,7 @@ function AddOpenAICompatibleModal({ isOpen, onClose, onCreated }) {
           label="Model ID (optional)"
           value={checkModelId}
           onChange={(e) => setCheckModelId(e.target.value)}
-          placeholder="e.g. gpt-4, claude-3-opus"
+          placeholder="e.g. gpt-4, claude-opus-5-5"
           hint="If provider lacks /models endpoint, enter a model ID to validate via chat/completions instead."
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -1174,7 +1174,7 @@ function AddAnthropicCompatibleModal({ isOpen, onClose, onCreated }) {
           label="Model ID (optional)"
           value={checkModelId}
           onChange={(e) => setCheckModelId(e.target.value)}
-          placeholder="e.g. claude-3-opus"
+          placeholder="e.g. claude-opus-5-5"
           hint="If provider lacks /models endpoint, enter a model ID to validate via chat/completions instead."
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
