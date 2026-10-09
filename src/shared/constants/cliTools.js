@@ -26,7 +26,7 @@ export const MITM_TOOLS = {
     description: "GitHub Copilot IDE with MITM",
     configType: "mitm",
     mitmDomain: "api.individual.githubcopilot.com",
-    modelAliases: ["gpt-4o-mini", "claude-haiku-4.5", "gpt-4o", "gpt-5-mini"],
+    modelAliases: ["gpt-4o-mini", "claude-haiku-4.5", "gpt-4o", "gpt-5.4-mini"],
     defaultModels: [
       { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },
       { id: "gpt-4.1", name: "GPT-4.1", alias: "gpt-4.1" },
