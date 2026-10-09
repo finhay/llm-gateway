@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, Button, SegmentedControl, Toggle } from "@/shared/components";
+import { Card, Button, Input, SegmentedControl, Toggle } from "@/shared/components";
 
 const DEFAULT_SETTINGS = {
   secretsEnabled: true,
@@ -11,6 +11,8 @@ const DEFAULT_SETTINGS = {
   customDlpPatterns: [],
   providerRiskOverrides: {},
   detectorOverrides: {},
+  semanticPiiVerification: false,
+  semanticContentClassification: false,
 };
 
 const SECRET_DETECTORS = [
@@ -209,6 +211,7 @@ function SettingsTab({ settings, onChange }) {
           <ModeRow label="DLP mode" value={settings.dlpMode} onChange={(v) => update("dlpMode", v)} />
         </div>
       </Card>
+      <SemanticChecksCard settings={settings} update={update} />
       <DetectorGroup
         title="Secret detectors"
         detectors={SECRET_DETECTORS}
@@ -222,6 +225,66 @@ function SettingsTab({ settings, onChange }) {
         onChange={updateDetector}
       />
     </div>
+  );
+}
+
+function apiKeyPlaceholder(settings) {
+  if (settings.typesafeApiKeySet) return "API key saved — enter a new one to replace";
+  if (settings.typesafeApiKeyFromEnv) return "Using TYPESAFE_API_KEY from environment";
+  return "TypeSafe API key";
+}
+
+function SemanticChecksCard({ settings, update }) {
+  const [apiKey, setApiKey] = useState("");
+  const hasKey = settings.typesafeApiKeySet || settings.typesafeApiKeyFromEnv;
+
+  function saveKey(value) {
+    update("typesafeApiKey", value);
+    setApiKey("");
+  }
+
+  return (
+    <Card className="p-5">
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-text-main">Semantic checks (TypeSafe)</h2>
+        <p className="text-sm text-text-muted">
+          Sends flagged snippets and, for content classification, the redacted conversation to TypeSafe. Errors fall back to regex-only results.
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input
+            type="password"
+            autoComplete="off"
+            className="flex-1"
+            placeholder={apiKeyPlaceholder(settings)}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <Button size="sm" disabled={!apiKey.trim()} onClick={() => saveKey(apiKey)}>Save key</Button>
+            {settings.typesafeApiKeySet && (
+              <Button size="sm" variant="secondary" onClick={() => saveKey(null)}>Clear</Button>
+            )}
+          </div>
+        </div>
+        <ToggleRow
+          label="Verify PII matches in context"
+          description="National ID and bank account hits that are clearly not PII (order IDs, timestamps, code identifiers) are logged instead of redacted and no longer restrict providers."
+          value={settings.semanticPiiVerification}
+          onChange={(v) => update("semanticPiiVerification", v)}
+        />
+        <ToggleRow
+          label="Classify credentials and private source code"
+          description="Restricts routing to low-risk providers when the conversation contains working credentials or the organization's own code. Coding-agent traffic will often qualify."
+          value={settings.semanticContentClassification}
+          onChange={(v) => update("semanticContentClassification", v)}
+        />
+        {!hasKey && (settings.semanticPiiVerification || settings.semanticContentClassification) && (
+          <p className="text-xs text-text-muted">No API key configured — semantic checks are skipped.</p>
+        )}
+      </div>
+    </Card>
   );
 }
 

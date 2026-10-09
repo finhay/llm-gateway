@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSettings, updateSettings } from "@/lib/localDb";
+import { getSettings, updateSettings, toPublicSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
@@ -17,8 +17,7 @@ const SETTINGS_RESPONSE_HEADERS = {
 export async function GET() {
   try {
     const settings = await getSettings();
-    const { password, oidcClientSecret, decisionApiKeys, ...safeSettings } = settings;
-    safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+    const safeSettings = toPublicSettings(settings);
     safeSettings.decisionKeyStatus = getDecisionKeyStatus(settings);
     
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
@@ -28,7 +27,7 @@ export async function GET() {
       ...safeSettings, 
       enableRequestLogs,
       enableTranslator,
-      hasPassword: !!password
+      hasPassword: !!settings.password
     }, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error getting settings:", error);
@@ -129,8 +128,7 @@ export async function PATCH(request) {
       resetComboRotation();
     }
 
-    const { password, oidcClientSecret, decisionApiKeys, ...safeSettings } = settings;
-    safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+    const safeSettings = toPublicSettings(settings);
     safeSettings.decisionKeyStatus = getDecisionKeyStatus(settings);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {

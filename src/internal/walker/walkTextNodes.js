@@ -128,6 +128,14 @@ function normalizeFormat(format = "") {
   return String(format).toLowerCase();
 }
 
+// Conversation turns, as opposed to client-generated system prompts and tool schemas.
+export function isConversationPath(path = "") {
+  return path.startsWith("messages[")
+    || path.startsWith("input[")
+    || path === "input"
+    || path.startsWith("contents[");
+}
+
 export function walkTextNodes(body, format) {
   const nodes = [];
   const normalized = normalizeFormat(format);

@@ -1,6 +1,8 @@
 const RANK = {
   internal: 1,
-  customer_pii: 2,
+  source_code_private: 2,
+  customer_pii: 3,
+  credentials: 4,
 };
 
 export function classifyDlp(matches = []) {

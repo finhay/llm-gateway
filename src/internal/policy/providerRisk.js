@@ -31,6 +31,10 @@ export function getProviderRisk(providerId, overrides = {}) {
   return overrides?.[providerId] || DEFAULT_RISK[providerId] || "medium";
 }
 
+export function restrictsProviders(classification) {
+  return Boolean(classification && CLASSIFICATION_TO_MAX_RISK[classification]);
+}
+
 export function isProviderAllowed(providerId, classification, overrides = {}) {
   if (!classification) return true;
   const risk = getProviderRisk(providerId, overrides);
