@@ -44,6 +44,8 @@ const DEFAULT_SETTINGS = {
     customDlpPatterns: [],
     providerRiskOverrides: {},
     detectorOverrides: {},
+    semanticPiiVerification: false,
+    semanticContentClassification: false,
   },
 };
 
@@ -70,6 +72,18 @@ function mergeWithDefaults(raw) {
     }
   }
   return merged;
+}
+
+// Settings safe to send to the browser: stored secrets are removed and replaced by
+// "is configured" flags.
+export function toPublicSettings(settings = {}) {
+  const { password, oidcClientSecret, securityScan, ...safeSettings } = settings;
+  const { typesafeApiKey, ...safeSecurityScan } = securityScan || {};
+  return {
+    ...safeSettings,
+    oidcConfigured: !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret),
+    securityScan: { ...safeSecurityScan, typesafeApiKeySet: Boolean(typesafeApiKey) },
+  };
 }
 
 export async function getSettings() {

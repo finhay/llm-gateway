@@ -1,13 +1,14 @@
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
-import { walkTextNodes } from "@/internal/walker/walkTextNodes.js";
+import { walkTextNodes, isConversationPath } from "@/internal/walker/walkTextNodes.js";
 import { scanNodes as scanSecretNodes } from "@/internal/secrets/scanner.js";
 import { scanNodes as scanDlpNodes } from "@/internal/dlp/scanner.js";
 import { classifyDlp } from "@/internal/dlp/classifier.js";
 import { applyRedactions } from "@/internal/secrets/redactor.js";
 import { recordSecurityEvents } from "@/internal/audit/index.js";
-import { isProviderAllowed } from "@/internal/policy/providerRisk.js";
+import { isProviderAllowed, restrictsProviders } from "@/internal/policy/providerRisk.js";
+import { runSemanticChecks } from "@/internal/dlp/semantic.js";
 
 function scanSettings(settings = {}) {
   return settings.securityScan || {};
@@ -26,7 +27,7 @@ function eventFor(match, context, action, ruleId) {
     location: match.location,
     fingerprint: match.fingerprint,
     action,
-    ruleId,
+    ruleId: match.ruleId || ruleId,
   };
 }
 
@@ -47,6 +48,7 @@ function globalActionFor(match, secretsMode, dlpMode) {
 }
 
 function actionFor(match, detectorOverrides, secretsMode, dlpMode) {
+  if (match.action) return match.action;
   const override = detectorOverrides?.[match.type]?.action;
   if (override && override !== "default") return override;
   return globalActionFor(match, secretsMode, dlpMode);
@@ -67,11 +69,26 @@ function matchesByAction(matches, detectorOverrides, secretsMode, dlpMode) {
 // in those structural fields, which can resemble PII and must not make every
 // configured provider appear unavailable.
 function isConversationPayload(match) {
-  const location = match?.location || "";
-  return location.startsWith("messages[")
-    || location.startsWith("input[")
-    || location === "input"
-    || location.startsWith("contents[");
+  return isConversationPath(match?.location || "");
+}
+
+async function auditGroups(actionGroups, context) {
+  await Promise.all(Object.entries(actionGroups).map(([action, matches]) => (
+    auditMatches(matches, context, action, `${action}-${matches[0]?.kind || "security"}`)
+  )));
+}
+
+async function denyIfBlocked(matches, context, groupsFor) {
+  const actionGroups = groupsFor(matches);
+  const blockedMatch = actionGroups.blocked?.[0];
+  if (!blockedMatch) return { actionGroups };
+  await auditGroups(actionGroups, context);
+  return {
+    deny: errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Security detector "${blockedMatch.type}" matched; request blocked.`
+    ),
+  };
 }
 
 export async function preProvider({ body, modelStr, apiKey, settings, request }) {
@@ -89,29 +106,32 @@ export async function preProvider({ body, modelStr, apiKey, settings, request })
   const secretMatches = secretsEnabled ? scanSecretNodes(nodes, detectorOverrides) : [];
   const dlpMatches = dlpEnabled ? scanDlpNodes(nodes, cfg.customDlpPatterns || [], detectorOverrides) : [];
   const allMatches = [...secretMatches, ...dlpMatches];
-  const actionGroups = matchesByAction(allMatches, detectorOverrides, secretsMode, dlpMode);
-  const blockedMatch = actionGroups.blocked?.[0];
-  if (blockedMatch) {
-    await Promise.all(Object.entries(actionGroups).map(([action, matches]) => (
-      auditMatches(matches, context, action, `${action}-${matches[0]?.kind || "security"}`)
-    )));
-    return {
-      deny: errorResponse(
-        HTTP_STATUS.BAD_REQUEST,
-        `Security detector "${blockedMatch.type}" matched; request blocked.`
-      ),
-    };
+  const groupsFor = (matches) => matchesByAction(matches, detectorOverrides, secretsMode, dlpMode);
+
+  // A blocked secret denies the request outright; no semantic check can change that.
+  if (secretMatches.some((match) => actionFor(match, detectorOverrides, secretsMode, dlpMode) === "blocked")) {
+    return { deny: (await denyIfBlocked(allMatches, context, groupsFor)).deny };
   }
 
-  const classification = classifyDlp(dlpMatches.filter(isConversationPayload));
+  // Opt-in TypeSafe checks: PII hits that are clearly not PII in context are downgraded
+  // to "logged"; content classifications arrive as extra match-shaped findings.
+  const semantic = await runSemanticChecks({ cfg, matches: allMatches, nodes });
+  const matches = [
+    ...allMatches.map((match) => (semantic.dismissed.has(match)
+      ? { ...match, action: "logged", classification: null, ruleId: "semantic-dismissed-pii" }
+      : match)),
+    ...semantic.findings,
+  ];
+
+  const { deny, actionGroups } = await denyIfBlocked(matches, context, groupsFor);
+  if (deny) return { deny };
+
+  const classification = classifyDlp([...matches.filter(isConversationPayload), ...semantic.findings]);
 
   applyRedactions(nodes, actionGroups.redacted || []);
+  await auditGroups(actionGroups, context);
 
-  await Promise.all(Object.entries(actionGroups).map(([action, matches]) => (
-    auditMatches(matches, context, action, `${action}-${matches[0]?.kind || "security"}`)
-  )));
-
-  const providerFilter = classification === "customer_pii"
+  const providerFilter = restrictsProviders(classification)
     ? (connection) => isProviderAllowed(connection.provider, classification, cfg.providerRiskOverrides || {})
     : null;
 
@@ -119,7 +139,7 @@ export async function preProvider({ body, modelStr, apiKey, settings, request })
     allow: true,
     providerFilter,
     classification,
-    matches: allMatches,
+    matches,
   };
 }
 
