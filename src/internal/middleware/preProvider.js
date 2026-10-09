@@ -113,12 +113,14 @@ export async function preProvider({ body, modelStr, apiKey, settings, request })
     return { deny: (await denyIfBlocked(allMatches, context, groupsFor)).deny };
   }
 
-  // Opt-in TypeSafe checks: PII hits that are clearly not PII in context are downgraded
-  // to "logged"; content classifications arrive as extra match-shaped findings.
+  // Opt-in TypeSafe checks: PII hits judged clearly not PII in context stop restricting
+  // routing but keep their normal action, so request text that sways the model can never
+  // un-redact a value or override a detector's block setting. Content classifications
+  // arrive as extra match-shaped findings.
   const semantic = await runSemanticChecks({ cfg, matches: allMatches, nodes });
   const matches = [
     ...allMatches.map((match) => (semantic.dismissed.has(match)
-      ? { ...match, action: "logged", classification: null, ruleId: "semantic-dismissed-pii" }
+      ? { ...match, classification: null, ruleId: "semantic-dismissed-pii" }
       : match)),
     ...semantic.findings,
   ];

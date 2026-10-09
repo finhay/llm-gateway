@@ -270,7 +270,7 @@ function SemanticChecksCard({ settings, update }) {
         </div>
         <ToggleRow
           label="Verify PII matches in context"
-          description="National ID and bank account hits that are clearly not PII (order IDs, timestamps, code identifiers) are logged instead of redacted and no longer restrict providers."
+          description="National ID and bank account hits that are clearly not PII (order IDs, timestamps, code identifiers) stay redacted but no longer restrict which providers can serve the request."
           value={settings.semanticPiiVerification}
           onChange={(v) => update("semanticPiiVerification", v)}
         />

@@ -165,8 +165,8 @@ function contentFinding(label) {
  * Fails safe: when disabled, unconfigured, or erroring, nothing is dismissed and
  * nothing is added, which leaves the regex-only behavior unchanged.
  *
- * @returns {Promise<{ dismissed: Set<object>, findings: object[] }>} regex matches to
- *   downgrade to "logged", and match-shaped content classifications to audit.
+ * @returns {Promise<{ dismissed: Set<object>, findings: object[] }>} regex matches that
+ *   should no longer restrict routing, and match-shaped content classifications to audit.
  */
 export async function runSemanticChecks({ cfg = {}, matches = [], nodes = [] }) {
   const empty = { dismissed: new Set(), findings: [] };
