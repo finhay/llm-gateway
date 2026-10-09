@@ -260,7 +260,7 @@ export async function POST(request) {
               "content-type": "application/json",
             },
             body: JSON.stringify({
-              model: "claude-3-haiku-20240307",
+              model: "claude-haiku-4-5",
               max_tokens: 1,
               messages: [{ role: "user", content: "test" }],
             }),
@@ -301,7 +301,7 @@ export async function POST(request) {
             });
             isValid = res.status !== 401 && res.status !== 403;
           } else {
-            const testModel = getDefaultModel(provider) || "claude-sonnet-4-20250514";
+            const testModel = getDefaultModel(provider) || "claude-haiku-4-5";
             const res = await fetch(cfg.baseUrl, {
               method: "POST",
               headers: {
